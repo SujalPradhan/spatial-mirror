@@ -71,8 +71,9 @@ function receive(p:Packet){
   if(['frame','action','ink'].includes(p.type)&&p.context!==context)return;
   if(p.type==='action')perform(String(p.action),typeof p.value==='number'?p.value:undefined);
   if(p.type==='frame'){
-    phoneInputAt=performance.now();phoneVisible=!!p.visible;
+    phoneInputAt=performance.now();phoneVisible=!!p.visible||p.stale===true&&p.visibleAtCapture===true;
     if(!phoneVisible){if(phoneRef||noteSource==='phone')end(true);needsRelease=true;refresh();return;}
+    if(p.stale){if(phoneRef)end();needsRelease=true;return;}
     if(!p.hold){if(phoneRef)end();needsRelease=false;return;}
     if(!p.active||!p.visible||!validQ(p.q)||frozen||state.mode!=='rotate'||activeNote||drag||needsRelease){if(phoneRef)end();return;}
     const angle=Number(p.screenAngle);if(!Number.isFinite(angle))return;

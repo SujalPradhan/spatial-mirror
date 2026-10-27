@@ -20,8 +20,19 @@ test('freshness at either network hop blocks delayed holds/fine edits while reta
  assert.equal(freshInput({type:'action',action:'fine',value:55,at},at+1500),null);
  assert.equal(freshInput({type:'frame',hold:true,at},NaN),null);
  const release=freshInput({type:'frame',hold:false,active:true,visible:true,depth:1.5,at},at+1500);
- assert.equal(release.active,false);assert.equal(release.depth,undefined);
+ assert.equal(release.active,false);assert.equal(release.depth,undefined);assert.equal(release.stale,true);assert.equal(release.visibleAtCapture,true);
+ const secondHop=freshInput(release,at+1600);assert.equal(secondHop.visibleAtCapture,true);assert.equal(secondHop.visible,false);
+ assert.equal(freshInput({type:'frame',hold:false,active:true,visible:false,at},at+1500).visibleAtCapture,false);
  assert.ok(freshInput({type:'action',action:'freeze',at},at+1500));
+});
+test('discrete controller commands tolerate a round trip while live edits remain fresh',()=>{
+ const at=10000;
+ assert.ok(freshInput({type:'action',action:'math-annotate',at},at+650));
+ assert.ok(freshInput({type:'action',action:'pottery-inspect',at},at+650));
+ assert.equal(freshInput({type:'action',action:'math-annotate',at},at+1501),null);
+ for(const action of['fine','depth','width','scrub'])assert.equal(freshInput({type:'action',action,at},at+650),null);
+ assert.equal(freshInput({type:'frame',hold:true,at},at+650),null);
+ assert.equal(freshInput({type:'action',action:'math-annotate',at},at-101),null);
 });
 test('expired join code does not invalidate the laptop session; full room expiry does',async()=>{
  const f=fixture({...meta(),joinExpiresAt:Date.now()-1});await f.ready();

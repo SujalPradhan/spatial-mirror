@@ -33,6 +33,13 @@ export class SensorHub {
   onOrientation:(q:Quat,t:number,source:string)=>void=()=>{};
   onTest:(result:TestResult)=>void=()=>{};
   private sensors:BrowserSensor[]=[];
+  private generation=0;
+  get orientationReady(){return this.active&&this.quaternion!==null;}
+  get orientationIssue(){
+    if(!this.active||this.orientationReady)return '';
+    const reason=this.readings.get('relative')?.reason;
+    return reason&&/denied|permission|not.allowed/i.test(reason)?'Motion access is blocked. Allow motion sensors in this site’s settings, then restart sensors.':'Waiting for motion readings. Check that motion sensors are allowed for this site.';
+  }
   private capture:{kind:string;start:number;date:string;samples:Map<string,Sample[]>;orientations:Sample[]}|null=null;
   private testTimer?:ReturnType<typeof setTimeout>;
   constructor(){
@@ -42,12 +49,12 @@ export class SensorHub {
   }
   async start(){
     if(this.active)return;
-    if(!window.isSecureContext)throw new Error('A secure context is required. Open this controller through the USB localhost link.');
+    if(!window.isSecureContext)throw new Error('Open the controller using its HTTPS link or USB localhost link.');
     for(const name of ['DeviceMotionEvent','DeviceOrientationEvent']){
       const ctor=(window as unknown as Record<string,{requestPermission?:()=>Promise<string>}>)[name];
       if(typeof ctor?.requestPermission==='function' && await ctor.requestPermission()!=='granted')throw new Error('Motion permission was not granted.');
     }
-    this.active=true;
+    this.active=true;const generation=++this.generation;
     for(const r of this.readings.values()){r.status='waiting';r.reason=undefined;}
     window.addEventListener('deviceorientation',this.orientation);
     window.addEventListener('devicemotion',this.motion);
@@ -58,19 +65,20 @@ export class SensorHub {
       try{
         const s=new C({frequency:60,referenceFrame:'device'});
         s.addEventListener('reading',()=>{
+          if(!this.active||generation!==this.generation)return;
           const values=id==='relative'||id==='absolute'?s.quaternion:id==='light'?[s.illuminance]:[s.x,s.y,s.z];
           if(values && finiteValues(values)){
             this.record(id,values,s.timestamp??performance.now());
             if(id==='relative')this.setQuaternion(values as Quat,'RelativeOrientationSensor',s.timestamp??performance.now());
           }
         });
-        s.addEventListener('error',(e)=>{reading.status='error';reading.reason=(e as Event & {error:Error}).error?.message||'Sensor access failed';});
+        s.addEventListener('error',(e)=>{if(!this.active||generation!==this.generation)return;reading.status='error';reading.reason=(e as Event & {error:Error}).error?.message||'Sensor access failed';});
         s.start();this.sensors.push(s);
       }catch(e){reading.status='error';reading.reason=String(e);}
     }
   }
   stop(){
-    this.active=false;
+    this.active=false;this.generation++;
     window.removeEventListener('deviceorientation',this.orientation);
     window.removeEventListener('devicemotion',this.motion);
     for(const s of this.sensors)s.stop();this.sensors=[];
@@ -86,14 +94,16 @@ export class SensorHub {
     this.onOrientation(this.quaternion,t,source);this.onReading();
   }
   private orientation=(e:DeviceOrientationEvent)=>{
-    const values=[e.alpha,e.beta,e.gamma];
-    if(!finiteValues(values))return;
+    if(!this.active||!finiteValues([e.beta,e.gamma])||e.alpha!==null&&!Number.isFinite(e.alpha))return;
+    // Some browsers provide tilt without a heading. A zero heading still gives
+    // useful clutched pitch/roll; never present it as a compass reading.
+    const values=[e.alpha??0,e.beta!,e.gamma!];
     this.record('eventOrientation',values,performance.now());
     const rel=this.readings.get('relative')!;
     if(rel.status!=='live'||performance.now()-(rel.timestamp??0)>1000){
       const d=Math.PI/180;
       const q=new Quaternion().setFromEuler(new Euler(values[1]*d,values[2]*d,values[0]*d,'ZXY'));
-      this.setQuaternion(q.toArray() as Quat,'DeviceOrientationEvent',e.timeStamp);
+      this.setQuaternion(q.toArray() as Quat,e.alpha===null?'DeviceOrientationEvent (tilt only)':'DeviceOrientationEvent',e.timeStamp);
     }
   };
   private motion=(e:DeviceMotionEvent)=>{

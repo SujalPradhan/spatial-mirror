@@ -56,7 +56,7 @@ function receive(p:Packet){
  if(lastPhoneCapture!==f.captureId){release();lastPhoneCapture=f.captureId;lastPhoneSequence=0;}if(f.frameId<=lastPhoneSequence)return;lastPhoneSequence=f.frameId;
  handsFrame(f.hands,performance.now()-(now-f.frameAt),f.width/f.height,f.videoTimeMs);drawRemote(f.hands,f.width,f.height);
  }
- if(p.type==='frame'){phoneInputAt=performance.now();phoneVisible=!!p.visible;if(paintSource==='phone'&&!phoneVisible){endPaint(true);dirty=true;}}
+ if(p.type==='frame'){phoneInputAt=performance.now();phoneVisible=!!p.visible||p.stale===true&&p.visibleAtCapture===true;if(paintSource==='phone'&&!phoneVisible){endPaint(true);dirty=true;}}
  if(p.type==='ink'&&stage==='decorate'&&!frozen)void ink(p).catch(e=>notify('Could not save decoration: '+String(e)));
  if(p.type==='frame'&&stage==='inspect')inspect(p);
  if(p.type==='action'){

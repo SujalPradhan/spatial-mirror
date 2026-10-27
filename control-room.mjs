@@ -4,9 +4,13 @@ const finiteQ=q=>Array.isArray(q)&&q.length===4&&q.every(Number.isFinite)&&Math.
 const between=(n,a,b)=>Number.isFinite(n)&&n>=a&&n<=b;
 // Apply at relay ingress AND desktop receipt. Ink has reliable checkpoints and
 // intentionally survives buffering; live pose/fine edits must be recent.
+const discreteActions=new Set(['math-rotate','math-annotate','math-residuals','math-reveal','math-next','math-clear','draw-mode','position-mode','pin','recenter','stable','twist','undo','redo','select-lid','select-tray','save-pose','limit','record','play','marker','pottery-shape','pottery-decorate','pottery-inspect','pottery-phone','pottery-save','pottery-radius','pottery-band']);
 export function freshInput(packet,now){
- if(Number.isFinite(packet.at)&&now-packet.at<=300&&packet.at-now<=100)return packet;
- if(packet.type==='frame'&&!packet.hold)return {...packet,active:false,visible:false,depth:undefined,depthActive:false,q:null};
+ // Button commands retain their workspace/context fence; give them a bounded
+ // acknowledgement window instead of the continuous-pose deadline.
+ const maxAge=packet.type==='action'&&discreteActions.has(packet.action)?1500:300;
+ if(Number.isFinite(packet.at)&&now-packet.at<=maxAge&&packet.at-now<=100)return packet;
+ if(packet.type==='frame'&&!packet.hold)return {...packet,stale:true,visibleAtCapture:packet.visible===true||packet.stale===true&&packet.visibleAtCapture===true,active:false,visible:false,depth:undefined,depthActive:false,q:null};
  if(packet.type==='action'&&['freeze','stop','fine-end'].includes(packet.action))return packet;
  return null;
 }
