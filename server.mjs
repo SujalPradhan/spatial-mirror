@@ -30,7 +30,7 @@ if(!production) vite=await createServer({cacheDir:`node_modules/.vite-${port}`,s
 async function serveBuilt(req,res){
   try{
     const path=decodeURIComponent(new URL(req.url,'http://localhost').pathname);
-    const route=['/','/cone','/cylinder','/cube','/lab','/phone','/mechanism','/mechanism/phone','/mechanism/box','/mechanism/box/phone','/art','/maths','/phone/lab','/tracking','/pottery'].includes(path)?'index.html':path.slice(1);
+    const route=['/','/cone','/cylinder','/cube','/lab','/phone','/mechanism','/mechanism/phone','/mechanism/box','/mechanism/box/phone','/art','/maths','/phone/lab','/tracking','/atp','/atp/','/pottery'].includes(path)?'index.html':path.slice(1);
     const file=resolve(dist,route);
     if(!file.startsWith(resolve(dist)+sep)||(req.method!=='GET'&&req.method!=='HEAD')){res.writeHead(404);res.end();return;}
     const info=await stat(file);if(!info.isFile())throw new Error('Not a file');

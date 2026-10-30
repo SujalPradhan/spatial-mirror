@@ -1,10 +1,17 @@
 import {validTrackingFrame,validTrackingPhoto,validCaptureId} from './tracking-protocol.mjs';
-const workspaces=new Set(['shapes','stand','box','art','lab','maths','tracking','pottery']);
+const workspaces=new Set(['shapes','stand','box','art','lab','maths','tracking','pottery','atp']);
 const finiteQ=q=>Array.isArray(q)&&q.length===4&&q.every(Number.isFinite)&&Math.abs(Math.hypot(...q)-1)<.1;
 const between=(n,a,b)=>Number.isFinite(n)&&n>=a&&n<=b;
 // Apply at relay ingress AND desktop receipt. Ink has reliable checkpoints and
 // intentionally survives buffering; live pose/fine edits must be recent.
 const discreteActions=new Set(['math-rotate','math-annotate','math-residuals','math-reveal','math-next','math-clear','draw-mode','position-mode','pin','recenter','stable','twist','undo','redo','select-lid','select-tray','save-pose','limit','record','play','marker','pottery-shape','pottery-decorate','pottery-inspect','pottery-phone','pottery-save','pottery-radius','pottery-band']);
+const atpButtons=new Set(['atp-view','atp-rotor','atp-prev','atp-next','atp-play','atp-pause','atp-recenter','atp-zoom-in','atp-zoom-out','atp-select-rotor','atp-select-stator','atp-select-head','atp-select-membrane','atp-guided','atp-explore','atp-checkpoint']);
+for(const action of atpButtons)discreteActions.add(action);
+function validAtpAction(p){
+ if(p.action==='atp-phase'||p.action==='atp-checkpoint')return between(p.value,0,360);
+ if(p.action==='atp-zoom')return between(p.value,.65,2.5);
+ return atpButtons.has(p.action)&&p.value===undefined;
+}
 export function freshInput(packet,now){
  // Button commands retain their workspace/context fence; give them a bounded
  // acknowledgement window instead of the continuous-pose deadline.
@@ -24,6 +31,7 @@ function descriptor(workspace,state){
  if(workspace==='box'&&(!['lid','tray'].includes(s.selected)||!between(s.angle,0,120)||!between(s.lift,0,160)||!between(s.limit,0,120)))return null;
  if(workspace==='art'&&(!s.frame||!finiteQ(s.frame.q)||!Array.isArray(s.frame.origin)||s.frame.origin.length!==3||s.frame.origin.some(n=>!between(n,-50,50))||!['stable','twist'].includes(s.kind)||!/^#[a-f0-9]{6}$/i.test(s.color)||!between(s.width,.005,.1)))return null;
  if(workspace==='maths'&&(!['point','cloud','challenge'].includes(s.stage)||!['rotate','annotate'].includes(s.mode)||!s.frame||!finiteQ(s.frame.q)||!Array.isArray(s.frame.origin)||s.frame.origin.length!==3||s.frame.origin.some(n=>!between(n,-50,50))||s.frame.aspect!==1||typeof s.canDraw!=='boolean'))return null;
+ if(workspace==='atp'&&(!Number.isInteger(s.chapter)||!between(s.chapter,0,5)||!['view','rotor'].includes(s.tool)||!['structure','mechanism'].includes(s.representation)||!between(s.phase,0,360)||![null,'rotor','stator','head','membrane'].includes(s.selected)||typeof s.guided!=='boolean'||s.zoom!==undefined&&!between(s.zoom,.65,2.5)||s.playing!==undefined&&typeof s.playing!=='boolean'))return null;
  return s;
 }
 // Shared protocol; works with Node and Cloudflare WebSocket implementations.
@@ -70,6 +78,7 @@ export function createControlRoom({initialEpoch=0,requireFresh=false}={}){
    }
    if(p.type==='action'){
     if(typeof p.action!=='string'||p.action.length>60||p.value!==undefined&&(!Number.isFinite(p.value)||Math.abs(p.value)>(p.action==='color'?0xffffff:30000)))return;
+    if(p.action.startsWith('atp-')&&(target.workspace!=='atp'||!validAtpAction(p)))return;
     send(owner,{type:'action',action:p.action,value:p.value,at:p.at,epoch,context:p.context});return;
    }
    if(p.type==='ink'){

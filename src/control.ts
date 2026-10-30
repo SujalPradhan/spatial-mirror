@@ -3,7 +3,7 @@ import {hosted,pairing,pairingStatus,clearPairing,socketUrl} from './session';
 import type {Packet} from './types';
 // @ts-ignore Shared plain-JavaScript protocol is also used by the relay.
 import {freshInput} from '../control-room.mjs';
-export const workspace=()=>location.pathname==='/pottery'?'pottery':location.pathname==='/tracking'?'tracking':location.pathname==='/maths'?'maths':location.pathname==='/art'?'art':location.pathname==='/mechanism/box'?'box':location.pathname==='/mechanism'?'stand':location.pathname.startsWith('/lab')?'lab':'shapes';
+export const workspace=()=>location.pathname.replace(/\/$/,'')==='/atp'?'atp':location.pathname==='/pottery'?'pottery':location.pathname==='/tracking'?'tracking':location.pathname==='/maths'?'maths':location.pathname==='/art'?'art':location.pathname==='/mechanism/box'?'box':location.pathname==='/mechanism'?'stand':location.pathname.startsWith('/lab')?'lab':'shapes';
 export class ControlClient {
  private readonly roomCode=pairing?.code;
  socket:WebSocket|null=null;connected=false;active=false;epoch=0;context=0;private seq=0;private stopped=false;private blocked=false;private latest:Record<string,unknown>;private stopLease:(()=>void)|null=null;private acquiring=false;private cancelled:AbortController|null=null;private timer?:ReturnType<typeof setTimeout>;private heartbeat?:ReturnType<typeof setInterval>;private remotePhone=false;private clockOffset:number|null=null;private clockRttMs:number|null=null;private motionNeutral:unknown=null;private motionEngagement='';private startedEngagement='';private motionContext:number|null=null;

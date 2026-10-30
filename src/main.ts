@@ -4,6 +4,7 @@ if((webcamOnly&&location.pathname.includes('/phone'))||(hosted&&location.pathnam
  document.querySelector('#app')!.innerHTML='<main style="padding:40px"><h1>Webcam preview</h1><p>Phone controls and the hardware lab are available in the local build.</p><a href="/cone">Open the 3D workspace</a></main>';
 }
 else if(['/phone','/mechanism/phone','/mechanism/box/phone'].includes(location.pathname))await import('./phone');
+else if(['/atp','/atp/'].includes(location.pathname))await import('./atp/app');
 else if(location.pathname==='/pottery')await import('./pottery/app');
 else if(location.pathname==='/tracking')await import('./tracking/app');
 else if(location.pathname==='/art')await import('./art/app');
