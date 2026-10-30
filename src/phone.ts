@@ -1,5 +1,5 @@
 import {PhoneTracking} from './tracking/phone';
-import {atpPhonePanel,updateAtpPhone} from './atp/phone-panel';
+import {atpPhonePanel,updateAtpPhone,atpFineSeek} from './atp/phone-panel';
 import './tracking/style.css';
 import './pottery/style.css';
 import {getSession,hosted,pairing,clearPairing} from './session';
@@ -59,7 +59,7 @@ hub.onOrientation=(q,t,source)=>{if(orientations.source&&orientations.source!==h
 const pad=$('#clutch');pad.onpointerdown=e=>{e.preventDefault();if(!enabled()||!motionReady()||contacts.size!==1)return;notice='';pad.setPointerCapture(e.pointerId);beginHold();pad.classList.add('holding');};
 for(const event of ['pointerup','pointercancel','lostpointercapture'])pad.addEventListener(event,()=>{holdRequest=null;hold=false;pad.classList.remove('holding');sendFrame();});
 $('#fine').onpointerdown=()=>{release();fine=true;};$('#fine').oninput=()=>{if(!enabled())return;fine=true;if(state?.workspace!=='shapes')action(state?.workspace==='atp'?(state.tool==='rotor'?'atp-phase':'atp-zoom'):'fine',Number($<HTMLInputElement>('#fine').value));};
-for(const event of ['pointerup','pointercancel','change','keyup','blur'])$('#fine').addEventListener(event,()=>{if(fine){action('fine-end');fine=false;}});
+for(const event of ['pointerup','pointercancel','change','keyup','blur'])$('#fine').addEventListener(event,()=>{if(fine){const seek=atpFineSeek(state,Number($<HTMLInputElement>('#fine').value),event);if(seek&&enabled())action(seek.action,seek.value);action('fine-end');fine=false;}});
 for(const el of document.querySelectorAll<HTMLElement>('[data-action]'))el.onclick=()=>{release();action(el.dataset.action!,el.dataset.action==='atp-checkpoint'?Number(el.dataset.value):undefined);};
 for(const el of document.querySelectorAll<HTMLElement>('[data-part]'))el.onclick=()=>{release();action('select-'+el.dataset.part);};
 for(const el of document.querySelectorAll<HTMLElement>('[data-angle]'))el.onclick=()=>{release();action('fine',Number(el.dataset.angle));action('fine-end');};

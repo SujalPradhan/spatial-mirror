@@ -5,11 +5,11 @@ const between=(n,a,b)=>Number.isFinite(n)&&n>=a&&n<=b;
 // Apply at relay ingress AND desktop receipt. Ink has reliable checkpoints and
 // intentionally survives buffering; live pose/fine edits must be recent.
 const discreteActions=new Set(['math-rotate','math-annotate','math-residuals','math-reveal','math-next','math-clear','draw-mode','position-mode','pin','recenter','stable','twist','undo','redo','select-lid','select-tray','save-pose','limit','record','play','marker','pottery-shape','pottery-decorate','pottery-inspect','pottery-phone','pottery-save','pottery-radius','pottery-band']);
-const atpButtons=new Set(['atp-view','atp-rotor','atp-prev','atp-next','atp-play','atp-pause','atp-recenter','atp-zoom-in','atp-zoom-out','atp-select-rotor','atp-select-stator','atp-select-head','atp-select-membrane','atp-guided','atp-explore','atp-checkpoint']);
+const atpButtons=new Set(['atp-view','atp-rotor','atp-prev','atp-next','atp-play','atp-pause','atp-recenter','atp-zoom-in','atp-zoom-out','atp-select-rotor','atp-select-stator','atp-select-head','atp-select-membrane','atp-guided','atp-explore','atp-checkpoint','atp-set-zoom']);
 for(const action of atpButtons)discreteActions.add(action);
 function validAtpAction(p){
  if(p.action==='atp-phase'||p.action==='atp-checkpoint')return between(p.value,0,360);
- if(p.action==='atp-zoom')return between(p.value,.65,2.5);
+ if(p.action==='atp-zoom'||p.action==='atp-set-zoom')return between(p.value,.65,2.5);
  return atpButtons.has(p.action)&&p.value===undefined;
 }
 export function freshInput(packet,now){

@@ -52,7 +52,12 @@ function receive(p:Packet){
  else if(action==='atp-recenter')change(()=>{state.view=structuredClone(chapters[state.chapter].view);});
  else if(action==='atp-guided'||action==='atp-explore')change(()=>{state.guided=action==='atp-guided';});
  else if(action.startsWith('atp-select-')){const part=action.slice(11) as AtpComponent;if(part in componentInfo)change(()=>{state.selected=part;});}
- else if(action==='atp-checkpoint'&&Number.isFinite(n)&&n>=0&&n<=360)phase(n);
+ else if((action==='atp-checkpoint'&&Number.isFinite(n)&&n>=0&&n<=360)||(action==='atp-set-zoom'&&Number.isFinite(n)&&n>=.65&&n<=2.5)){
+  if(owner&&owner!=='phone'){notice('Release the current control first.');return;}
+  // Commit the final touch value into the existing scalar operation before release.
+  const apply=()=>{if(action==='atp-checkpoint'){state.phase=n;state.representation='mechanism';}else state.view.zoom=n;};
+  if(!owner&&!begin('phone'))return;apply();release();dirty=true;updateUI();publish();
+ }
  else if(action==='atp-phase'&&Number.isFinite(n)&&n>=0&&n<=360){if(state.representation==='mechanism'&&begin('phone')){lastFine=performance.now();state.phase=n;dirty=true;}}
  else if(action==='atp-zoom'&&Number.isFinite(n)&&n>=.65&&n<=2.5){if(begin('phone')){lastFine=performance.now();state.view.zoom=n;dirty=true;}}
  else if(action==='atp-zoom-in'||action==='atp-zoom-out')change(()=>{state.view.zoom=clamp(state.view.zoom*(action==='atp-zoom-in'?1.15:1/1.15),.65,2.5);});

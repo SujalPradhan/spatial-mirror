@@ -1,5 +1,12 @@
 import type {Packet} from '../types';
 
+/** An intentional touch/key completion is a final seek, not another live sample. */
+export function atpFineSeek(state:Packet|null,value:number,event:string){
+ if(state?.workspace!=='atp'||!['pointerup','change','keyup'].includes(event)||!Number.isFinite(value))return null;
+ const rotor=state.tool==='rotor',min=rotor?0:.65,max=rotor?360:2.5;
+ return value<min||value>max?null:{action:rotor?'atp-checkpoint':'atp-set-zoom',value};
+}
+
 export const atpPhonePanel=`<section id="atp-phone-panel" hidden aria-label="ATP synthase controls"><p id="atp-phone-chapter"></p><div class="button-row"><button data-action="atp-view">View</button><button data-action="atp-rotor">Turn rotor</button></div><div class="button-row"><button data-action="atp-prev">Previous</button><button data-action="atp-next">Next</button><button data-action="atp-play">Play illustration</button><button data-action="atp-pause">Pause</button></div><div class="button-row"><button data-action="atp-recenter">Recenter</button><button data-action="atp-zoom-out" aria-label="Zoom out">−</button><button data-action="atp-zoom-in" aria-label="Zoom in">+</button></div><details><summary>Parts and checkpoints</summary><div class="button-row"><button data-action="atp-select-rotor">Rotor</button><button data-action="atp-select-stator">Stationary support</button><button data-action="atp-select-head">Catalytic head</button><button data-action="atp-select-membrane">Membrane</button></div><div class="button-row"><button data-action="atp-checkpoint" data-value="0">0°</button><button data-action="atp-checkpoint" data-value="120">120°</button><button data-action="atp-checkpoint" data-value="240">240°</button><button data-action="atp-checkpoint" data-value="360">360°</button></div><div class="button-row"><button data-action="atp-guided">Guided</button><button data-action="atp-explore">Explore</button></div></details></section>`;
 
 /** Only the ATP workspace changes the shared pad/slider labels. */

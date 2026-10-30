@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Quaternion,Vector3} from 'three';
 import {AtpPhoneInput,AtpHandInput} from '../src/atp/input';
+import {atpFineSeek} from '../src/atp/phone-panel';
 import type {AtpInputTarget,AtpState,AtpInputSource} from '../src/atp/contracts';
 import type {Packet,Quat} from '../src/types';
 import {imageHand,metricHand} from './hand-fixtures';
@@ -13,6 +14,16 @@ function fixture(tool:'view'|'rotor'='rotor'){
  return {state,target,events,allow(value:boolean){allowed=value;},nav(value:typeof navigation){navigation=value;}};
 }
 const frame=(degrees=0,hold=true,extra:Partial<Packet>={}):Packet=>({type:'frame',q:q(degrees),hold,active:true,visible:true,screenAngle:0,source:'orientation',...extra});
+test('ATP fine completion commits a bounded final seek only on deliberate completion',()=>{
+ for(const event of ['pointerup','change','keyup']){
+  assert.deepEqual(atpFineSeek({type:'state',workspace:'atp',tool:'rotor'},293,event),{action:'atp-checkpoint',value:293});
+  assert.deepEqual(atpFineSeek({type:'state',workspace:'atp',tool:'view'},2.25,event),{action:'atp-set-zoom',value:2.25});
+ }
+ for(const event of ['pointercancel','blur'])assert.equal(atpFineSeek({type:'state',workspace:'atp',tool:'rotor'},293,event),null);
+ assert.equal(atpFineSeek({type:'state',workspace:'shapes',tool:'rotor'},293,'pointerup'),null);
+ assert.equal(atpFineSeek({type:'state',workspace:'atp',tool:'rotor'},361,'pointerup'),null);
+ assert.equal(atpFineSeek({type:'state',workspace:'atp',tool:'view'},2.6,'change'),null);
+});
 test('phone requires release, clutches rotor at accepted state, and leaves view alone',()=>{
  const f=fixture(),p=new AtpPhoneInput(f.target);f.state.phase=40;
  p.frame(frame(0),0);p.frame(frame(20),20);assert.equal(f.state.phase,40);assert.equal(p.held,false);
