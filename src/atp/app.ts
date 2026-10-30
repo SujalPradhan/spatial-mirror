@@ -58,7 +58,7 @@ function receive(p:Packet){
  else if(action==='atp-zoom-in'||action==='atp-zoom-out')change(()=>{state.view.zoom=clamp(state.view.zoom*(action==='atp-zoom-in'?1.15:1/1.15),.65,2.5);});
 }
 const binding=await bindDocument('atp:6oqr',()=>state,v=>{release();state=validateAtp(v);playing=false;history=[];dirty=true;context++;publish();});
-const session=await getSession();client=new ControlClient('desktop',session.token,receive,descriptor());
+const session=await getSession();client=new ControlClient('desktop',session.token,receive,descriptor());publish();
 view.ready.then(()=>{ready=true;$('#atp-loading').hidden=true;dirty=true;}).catch(error=>{const el=$('#atp-loading');el.classList.add('atp-error');el.textContent='Could not load the structure. '+String(error);const b=document.createElement('button');b.textContent='Try again';b.onclick=()=>location.reload();el.append(b);});
 viewport.addEventListener('atp-render-error',e=>{ready=false;release();playing=false;const el=$('#atp-loading');el.hidden=false;el.classList.add('atp-error');el.textContent=String((e as CustomEvent).detail);});
 $('#atp-guided').onclick=()=>change(()=>{state.guided=!state.guided;});
