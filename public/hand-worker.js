@@ -21,7 +21,8 @@ self.onmessage = async ({data}) => {
         let result;
         try{result=detector.detectForVideo(data.bitmap,data.timestamp);}
         catch(error){if(delegate!=='GPU')throw error;try{detector.close();}catch{}detector=await createDetector(false);result=detector.detectForVideo(data.bitmap,data.timestamp);}
-        self.postMessage({type:'result',landmarks:result.landmarks,worldLandmarks:result.worldLandmarks,inferenceMs:performance.now()-start,timestamp:data.timestamp,delegate});
+        const handedness=(result.handedness??result.handednesses??[]).map(h=>{const name=h?.[0]?.categoryName;return name==='Left'||name==='Right'?name:null;});
+        self.postMessage({type:'result',landmarks:result.landmarks,worldLandmarks:result.worldLandmarks,handedness,inferenceMs:performance.now()-start,timestamp:data.timestamp,delegate});
       } finally { data.bitmap.close(); }
     }
   } catch (error) { self.postMessage({type:'error',message:String(error)}); }

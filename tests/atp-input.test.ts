@@ -1,17 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Quaternion,Vector3} from 'three';
-import {AtpPhoneInput,AtpHandInput} from '../src/atp/input';
+import {AtpPhoneInput} from '../src/atp/input';
 import {atpFineSeek} from '../src/atp/phone-panel';
 import type {AtpInputTarget,AtpState,AtpInputSource} from '../src/atp/contracts';
 import type {Packet,Quat} from '../src/types';
-import {imageHand,metricHand} from './hand-fixtures';
 const q=(degrees:number,axis=new Vector3(1,0,0))=>new Quaternion().setFromAxisAngle(axis,degrees*Math.PI/180).toArray() as Quat;
 function fixture(tool:'view'|'rotor'='rotor'){
- const state:AtpState={schema:1,chapter:0,guided:true,tool,representation:'mechanism',phase:0,selected:null,view:{q:[0,0,0,1],zoom:1,x:0,y:0},frozen:false};
- let owner:AtpInputSource|null=null,allowed=true,navigation:'orbit'|'pan'|'zoom'='orbit';const events:string[]=[];
- const target:AtpInputTarget={state:()=>state,begin(source){if(!allowed||owner&&owner!==source)return false;owner=source;events.push('begin:'+source);return true;},end(source){if(owner===source){owner=null;events.push('end:'+source);}},view(value){state.view.q=value;events.push('view');},phase(value){state.phase=value;events.push('phase');},status(){},navigation:()=>navigation,zoom(value){state.view.zoom=value;},pan(x,y){state.view.x=x;state.view.y=y;}};
- return {state,target,events,allow(value:boolean){allowed=value;},nav(value:typeof navigation){navigation=value;}};
+ const state:AtpState={schema:2,tool,phase:0,view:{q:[0,0,0,1],zoom:1,x:0,y:0},frozen:false};
+ let owner:AtpInputSource|null=null,allowed=true;const events:string[]=[];
+ const target:AtpInputTarget={state:()=>state,begin(source){if(!allowed||owner&&owner!==source)return false;owner=source;events.push('begin:'+source);return true;},end(source){if(owner===source){owner=null;events.push('end:'+source);}},view(value){state.view.q=value;events.push('view');},phase(value){state.phase=value;events.push('phase');}};
+ return {state,target,events,allow(value:boolean){allowed=value;}};
 }
 const frame=(degrees=0,hold=true,extra:Partial<Packet>={}):Packet=>({type:'frame',q:q(degrees),hold,active:true,visible:true,screenAngle:0,source:'orientation',...extra});
 test('ATP fine completion commits a bounded final seek only on deliberate completion',()=>{
@@ -60,27 +59,4 @@ test('phone signed angle remains continuous through wrap and quaternion sign fli
 test('phone respects input ownership and explicit invert',()=>{
  const f=fixture(),p=new AtpPhoneInput(f.target);f.allow(false);p.frame(frame(0,false),0);p.frame(frame(0),1);p.frame(frame(20),2);assert.equal(f.state.phase,0);assert.equal(p.held,false);
  f.allow(true);f.state.phase=180;p.frame(frame(0,false,{invert:true}),3);p.frame(frame(0,true,{invert:true}),4);p.frame(frame(20,true,{invert:true}),5);assert.equal(Math.round(f.state.phase),140);
-});
-function grab(h:AtpHandInput){h.update([imageHand(0)],0,[metricHand(0)]);h.update([imageHand(4)],10,[metricHand(4)]);h.update([imageHand(4)],140,[metricHand(4)]);}
-const moved=(dy:number,dx=0)=>imageHand(4).map(p=>({...p,x:p.x+dx,y:p.y+dy}));
-test('hand retains open-fist-release gate and clamps rotor without changing view',()=>{
- const f=fixture(),h=new AtpHandInput(f.target);h.region='any';h.update([imageHand(4)],-100,[metricHand(4)]);assert.equal(h.held,false);
- grab(h);assert.equal(h.held,true);h.update([moved(-.1)],150,[metricHand(4)]);assert.equal(Math.round(f.state.phase),72);assert.deepEqual(f.state.view.q,[0,0,0,1]);
- h.update([imageHand(0)],160,[metricHand(0)]);assert.equal(h.held,false);const phase=f.state.phase;h.update([moved(-.2)],170,[metricHand(4)]);assert.equal(f.state.phase,phase);
-});
-test('hand loss, timeout and tool change release ownership; a held fist cannot silently resume',()=>{
- for(const interrupt of ['lost','stale','tool'] as const){const f=fixture(),h=new AtpHandInput(f.target);h.region='any';grab(h);
-  if(interrupt==='lost')h.update([],150);
-  if(interrupt==='stale')h.tick(391);
-  if(interrupt==='tool'){f.state.tool='view';h.tick(150);f.state.tool='rotor';}
-  assert.equal(h.held,false);h.update([moved(-.1)],400,[metricHand(4)]);h.update([moved(-.1)],550,[metricHand(4)]);assert.equal(f.state.phase,0);assert.ok(f.events.includes('end:hand'));
- }
-});
-test('hand view navigation changes orbit/pan/zoom independently from illustrated phase',()=>{
- for(const mode of ['orbit','pan','zoom'] as const){const f=fixture('view'),h=new AtpHandInput(f.target);h.region='any';f.nav(mode);f.state.phase=120;grab(h);h.update([moved(-.1,.05)],150,[metricHand(4)]);
-  assert.equal(f.state.phase,120);
-  if(mode==='orbit')assert.notDeepEqual(f.state.view.q,[0,0,0,1]);
-  if(mode==='pan'){assert.ok(f.state.view.x<0);assert.ok(f.state.view.y>0);}
-  if(mode==='zoom')assert.ok(f.state.view.zoom>1);
- }
 });

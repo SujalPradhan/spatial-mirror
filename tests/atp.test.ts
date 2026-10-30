@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {initialAtp,validateAtp,clampPhase,phaseSites,selectChapter,checkpoints,componentInfo} from '../src/atp/model';
-import {chapters,scientificNote,energyQuestion,sources} from '../src/atp/content';
+import {initialAtp,validateAtp,clampPhase} from '../src/atp/model';
+import {gestureGuide,scientificNote,sources} from '../src/atp/content';
 import type {AtpStructureAsset} from '../src/atp/contracts';
 
 const asset=JSON.parse(readFileSync(new URL('../public/models/atp-6oqr.json',import.meta.url),'utf8')) as AtpStructureAsset;
@@ -17,91 +17,43 @@ const point=(id:string,index=0)=>asset.chains.find(c=>c.id===id)!.points.slice(i
 const dot=(a:number[],b:number[])=>a.reduce((sum,n,i)=>sum+n*b[i],0);
 const transform=(source:number[])=>provenance.rotationRows.map(row=>dot(row,source.map((n,i)=>n-provenance.originAngstrom[i])));
 
-test('ATP starts as a usable paused structural view without active input/playback state',()=>{
+test('ATP starts paused at home with only pose and phase in its saved state',()=>{
   const state=initialAtp();
-  assert.equal(state.chapter,0);assert.equal(state.phase,0);assert.equal(state.representation,'structure');
-  assert.equal(state.tool,'view');assert.equal(state.frozen,false);
-  assert.deepEqual(Object.keys(state).sort(),['schema','chapter','guided','tool','representation','phase','selected','view','frozen'].sort());
-  state.view.q[0]=.3;
-  assert.notEqual(initialAtp().view.q[0],.3);
-  assert.notEqual(chapters[0].view.q[0],.3);
+  assert.deepEqual(Object.keys(state).sort(),['frozen','phase','schema','tool','view']);
+  assert.equal(state.schema,2);assert.equal(state.phase,0);assert.equal(state.tool,'view');
+  state.view.q[0]=.3;assert.notEqual(initialAtp().view.q[0],.3);
 });
 
-test('phase stays bounded and the four explanatory checkpoints have a deterministic cycle',()=>{
+test('phase stays bounded',()=>{
   for(const [input,expected] of [[-20,0],[0,0],[120,120],[360,360],[721,360],[NaN,0],[Infinity,0]])near(clampPhase(input),expected);
-  assert.deepEqual(checkpoints,[0,120,240,360]);
-  const states=(phase:number)=>phaseSites(phase).map(site=>site.state);
-  assert.deepEqual(states(0),['open','loose','tight']);
-  assert.deepEqual(states(119.999),states(0));
-  assert.deepEqual(states(120),['loose','tight','open']);
-  assert.deepEqual(states(240),['tight','open','loose']);
-  assert.deepEqual(states(360),states(0));
-  assert.deepEqual(phaseSites(0).map(site=>site.label),['Site A','Site B','Site C']);
-  // Rewinding is stateless and cannot accumulate a production counter.
-  assert.deepEqual(phaseSites(240),phaseSites(240));
-  phaseSites(360);assert.deepEqual(states(0),['open','loose','tight']);
-});
-
-test('chapter changes preserve phase/freeze and do not share mutable views with content',()=>{
-  const base=initialAtp();base.phase=173.5;base.frozen=true;base.selected='head';
-  const next=selectChapter(base,3);
-  assert.equal(next.phase,173.5);assert.equal(next.frozen,true);assert.equal(next.tool,'rotor');
-  assert.equal(next.representation,'mechanism');assert.equal(next.selected,null);
-  next.view.q[0]=.55;assert.notEqual(chapters[3].view.q[0],.55);assert.notEqual(base.view.q[0],.55);
-  for(const index of [-1,6,.5,NaN])assert.throws(()=>selectChapter(base,index));
-});
-
-test('view edits and mechanism phase remain independent on round trip',()=>{
-  const state=initialAtp();state.phase=240;state.selected='stator';
-  state.view={q:[0,Math.sin(.4),0,Math.cos(.4)],zoom:1.8,x:1.2,y:-.4};
-  const restored=validateAtp(JSON.parse(JSON.stringify(state)));
-  assert.equal(restored.phase,240);assert.deepEqual(restored.view,state.view);
-  const oldView=structuredClone(restored.view);restored.phase=120;
-  assert.deepEqual(restored.view,oldView);
 });
 
 test('restoration allows only state fields and never resumes cameras, a held grab or playback',()=>{
   const source={...initialAtp(),playing:true,camera:true,held:true,inputOwner:'phone'};
   const restored=validateAtp(source);
-  assert.equal('playing' in restored,false);assert.equal('camera' in restored,false);
-  assert.equal('held' in restored,false);assert.equal('inputOwner' in restored,false);
+  assert.deepEqual(Object.keys(restored).sort(),['frozen','phase','schema','tool','view']);
   restored.view.q[0]=.2;assert.notEqual(source.view.q[0],.2);
 });
 
 test('invalid imports cannot install malformed enums, phases or non-finite values',()=>{
-  const invalid:Record<string,unknown>[]=[{schema:2},{chapter:6},{chapter:1.5},{guided:1},{tool:'spin'},
-    {representation:'simulation'},{phase:-.1},{phase:360.1},{phase:NaN},{phase:Infinity},
-    {selected:'unknown'},{frozen:1},{view:null}];
+  const invalid:Record<string,unknown>[]=[{schema:1},{tool:'spin'},{phase:-.1},{phase:360.1},{phase:NaN},{phase:Infinity},{frozen:1},{view:null}];
   for(const patch of invalid)assert.throws(()=>validateAtp({...initialAtp(),...patch}));
   for(const value of [null,[],3,'state',{}])assert.throws(()=>validateAtp(value));
 });
 
 test('view bounds and quaternion validation prevent invalid poses while preserving valid limits',()=>{
   for(const zoom of [.65,2.5])assert.equal(validateAtp({...initialAtp(),view:{...initialAtp().view,zoom}}).view.zoom,zoom);
-  for(const patch of [{zoom:.64},{zoom:2.51},{x:6.01},{y:-6.01},{x:NaN},{q:[0,0,0,0]},
-    {q:[0,0,0,8]},{q:[0,0,Infinity,1]},{q:[0,0,1]}]) {
+  for(const patch of [{zoom:.64},{zoom:2.51},{x:6.01},{y:-6.01},{x:NaN},{q:[0,0,0,0]},{q:[0,0,0,8]},{q:[0,0,Infinity,1]},{q:[0,0,1]}]) {
     assert.throws(()=>validateAtp({...initialAtp(),view:{...initialAtp().view,...patch}}));
   }
-  const restored=validateAtp({...initialAtp(),view:{q:[0,0,0,1.01],zoom:1,x:6,y:-6}});
-  assert.deepEqual(restored.view.q,[0,0,0,1]);
+  assert.deepEqual(validateAtp({...initialAtp(),view:{q:[0,0,0,1.01],zoom:1,x:6,y:-6}}).view.q,[0,0,0,1]);
 });
 
-test('six original chapters and explanations distinguish organism, energy, snapshot and diagram',()=>{
-  assert.equal(chapters.length,6);
-  for(let chapter=0;chapter<chapters.length;chapter++) {
-    const state=selectChapter(initialAtp(),chapter);assert.doesNotThrow(()=>validateAtp(state));
-    const content=chapters[chapter];assert.ok(content.text.length<450);assert.ok(content.hint.length>10);
-  }
-  assert.match(chapters[0].text,/E\. coli/);
-  assert.match(chapters[1].text,/electrical potential/);
-  assert.match(chapters[1].text,/periplasm.*cytoplasm/);
-  assert.match(chapters[4].text,/beta catalytic sites/);
-  assert.match(scientificNote,/static.*ADP-state/);
-  assert.match(scientificNote,/not PDB chain IDs/);
-  assert.match(scientificNote,/Rewinding/);
-  assert.equal(energyQuestion.correct,0);assert.match(energyQuestion.choices[0],/gradient/);
+test('the note keeps measured structure and playful motion apart, and the guide has no duplicates',()=>{
+  assert.match(scientificNote,/static snapshot/);assert.match(scientificNote,/not simulation/);
+  assert.match(scientificNote,/ten protons per turn/);assert.match(scientificNote,/three ATP/);
   assert.ok(sources.some(source=>source.url==='https://www.rcsb.org/structure/6OQR'));
-  assert.deepEqual(Object.keys(componentInfo).sort(),['head','membrane','rotor','stator']);
+  assert.equal(new Set(gestureGuide.map(g=>g.id)).size,gestureGuide.length);
 });
 
 test('the sourced asset contains the complete 22-chain CA selection, not fabricated residues',()=>{

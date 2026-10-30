@@ -1,5 +1,4 @@
-import {Euler,Quaternion,Vector3} from 'three';
-import {FistGate,type Landmark} from '../fist';
+import {Quaternion,Vector3} from 'three';
 import type {Packet,Quat} from '../types';
 import type {AtpInputTarget,AtpTool} from './contracts';
 
@@ -36,32 +35,4 @@ export class AtpPhoneInput {
   }
  }
  tick(now:number){if(!this.enabled||this.target.state().frozen||this.target.state().tool!==this.tool||now-this.lastFrame>400)this.release();}
-}
-
-/** Existing fist intent gate; no additional hand model or classifier. */
-export class AtpHandInput {
- enabled=true;held=false;private gate=new FistGate();private lastFrame=-Infinity;private start={x:0,y:0};private base=new Quaternion();private phaseBase=0;private zoomBase=1;private panBase={x:0,y:0};private tool:AtpTool|null=null;private navigation='orbit';
- get region(){return this.gate.region;}
- set region(value:'any'|'left'|'right'){if(value!==this.gate.region){this.reset();this.gate.region=value;}}
- constructor(private target:AtpInputTarget){}
- release(){if(this.held)this.target.end('hand');this.held=false;this.gate.reset();}
- reset(){this.release();}
- update(hands:Landmark[][],at:number,worldHands:Landmark[][]=[],aspect=1){
-  this.lastFrame=at;const state=this.target.state(),navigation=this.target.navigation?.()??'orbit';
-  if(!this.enabled||state.frozen){this.release();return;}
-  if(this.tool!==state.tool||this.navigation!==navigation){this.release();this.tool=state.tool;this.navigation=navigation;}
-  const frame=this.gate.update(hands,at,{minX:0,maxX:1,minY:0,maxY:1},worldHands,aspect);this.target.status(frame.message);
-  if(frame.phase==='end'||frame.phase==='idle'){if(this.held){this.target.end('hand');this.held=false;}return;}
-  if(frame.phase==='start'){
-   if(!this.target.begin('hand')){this.release();return;}
-   this.held=true;this.start={x:frame.x,y:frame.y};this.base.fromArray(state.view.q);this.phaseBase=state.phase;this.zoomBase=state.view.zoom;this.panBase={x:state.view.x,y:state.view.y};
-  }
-  if(!this.held)return;
-  const dx=frame.x-this.start.x,dy=frame.y-this.start.y;
-  if(state.tool==='rotor')this.target.phase(clamp(this.phaseBase-dy*720,0,360));
-  else if(navigation==='zoom'&&this.target.zoom)this.target.zoom(clamp(this.zoomBase*Math.exp(-dy*3),.65,2.5));
-  else if(navigation==='pan'&&this.target.pan)this.target.pan(clamp(this.panBase.x+dx*8,-6,6),clamp(this.panBase.y-dy*8,-6,6));
-  else this.target.view(new Quaternion().setFromEuler(new Euler(dy*3,dx*3,0,'YXZ')).multiply(this.base).normalize().toArray() as Quat);
- }
- tick(now:number){if(!this.enabled||this.target.state().frozen||this.target.state().tool!==this.tool||(this.target.navigation?.()??'orbit')!==this.navigation||now-this.lastFrame>250)this.release();}
 }

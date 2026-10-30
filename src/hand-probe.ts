@@ -4,6 +4,7 @@ export type Landmark={x:number;y:number;z:number};
 export interface HandFrameMeta {
  frameId:number;sourceTimeMs:number;dispatchAt:number;videoTimeMs:number;timestampSource:string;
  width:number;height:number;inferenceMs:number;
+ handedness?:(string|null)[];
 }
 export interface HandProbeOptions {targetHz?:number;preferGPU?:boolean;reportIntervalMs?:number}
 export class HandProbe {
@@ -41,7 +42,7 @@ export class HandProbe {
       const presented=(_now:number,meta:VideoFrameCallbackMetadata)=>{if(this.stopped)return;this.presented={time:meta.presentationTime,mediaTime:meta.mediaTime};this.videoCallback=this.video.requestVideoFrameCallback(presented);};
       this.videoCallback=this.video.requestVideoFrameCallback(presented);
     }
-    this.worker=new Worker('/hand-worker.js?v=2');
+    this.worker=new Worker('/hand-worker.js?v=3');
     this.readyTimer=setTimeout(()=>this.fail('Hand model did not initialize within 30 seconds.'),30000);
     this.worker.onerror=e=>this.fail(e.message);
     this.worker.onmessage=({data})=>{
@@ -53,7 +54,7 @@ export class HandProbe {
         this.frames++;this.samples.push(data.inferenceMs);if(this.samples.length>300)this.samples.shift();
         this.workerSamples.push(performance.now()-data.timestamp);if(this.workerSamples.length>300)this.workerSamples.shift();
         const hands=data.landmarks as Landmark[][];
-        this.onFrame?.(hands,data.timestamp,data.worldLandmarks??[],this.frameMeta?{...this.frameMeta,inferenceMs:data.inferenceMs}:undefined);
+        this.onFrame?.(hands,data.timestamp,data.worldLandmarks??[],this.frameMeta?{...this.frameMeta,inferenceMs:data.inferenceMs,handedness:data.handedness}:undefined);
         if(hands.length)this.detectedFrames++;this.maxHands=Math.max(this.maxHands,hands.length);
         const rate=this.frames/Math.max(.001,(performance.now()-this.started-this.pausedDuration)/1000);
         this.draw(hands);
