@@ -27,7 +27,7 @@ let drag:{id:number;x:number;y:number;view:AtpState['view'];pluck:boolean}|null=
 let owner:AtpInputSource|null=null,before:AtpState|null=null,history:AtpState[]=[];
 const empty=():GestureFrame=>({at:0,hands:[],events:[]});
 const viewport=$('#atp-viewport'),view=new AtpView(viewport),engine=new AtpEngine(view),audio=new AtpAudio(),tracker=new GestureTracker();
-let frame=empty(),lastHands=-Infinity;
+let frame=empty(),lastHands=-Infinity,shockAt=-Infinity;
 const trackingSession=crypto.randomUUID();let phoneCapture='',phoneSequence=0,phoneFrames=0,phoneCamera=false;
 function notice(s:string){if(s!==spoken)$('#atp-status').textContent=spoken=s;}
 function angle(){return ((engine.rotorDegrees%360)+360)%360;}
@@ -103,7 +103,7 @@ viewport.onkeydown=e=>{if(e.key===' '&&!state.frozen){e.preventDefault();void au
 let stream:MediaStream|null=null,probe:HandProbe|null=null,cameraStarting=false,cameraGeneration=0;
 const video=$<HTMLVideoElement>('#atp-video');
 function stopCamera(){cameraGeneration++;cameraStarting=false;probe?.stop();probe=null;stream?.getTracks().forEach(t=>t.stop());stream=null;video.srcObject=null;tracker.reset();frame=empty();$('#atp-stage').classList.remove('is-live');$('#atp-camera').textContent='Step into the mirror';$('#atp-camera').removeAttribute('aria-pressed');}
-function hands(raw:Landmark[][],at:number,world:Landmark[][],handedness:(string|null)[]=[],aspect=video.videoWidth/video.videoHeight||16/9){if(raw.length)lastHands=performance.now();frame=tracker.update(raw,at,world,handedness,aspect);}
+function hands(raw:Landmark[][],at:number,world:Landmark[][],handedness:(string|null)[]=[],aspect=video.videoWidth/video.videoHeight||16/9){if(raw.length)lastHands=performance.now();frame=tracker.update(raw,at,world,handedness,aspect);if(frame.events.some(e=>e.type==='clap'))shockAt=performance.now();}
 async function startCamera(){
  if(stream||cameraStarting){stopCamera();return;}
  const generation=++cameraGeneration;cameraStarting=true;void audio.start();$('#atp-camera').textContent='Opening camera…';
@@ -121,7 +121,7 @@ async function startCamera(){
 $('#atp-camera').onclick=()=>void startCamera();
 function lightGuide(){
  const poses=frame.hands.map(h=>h.pose),two=poses.length===2&&poses[0]===poses[1]?poses[0]:null,active=two==='pinch'?'both-pinch':two==='fist'?'both-fist':poses[0]??'';
- document.querySelectorAll<HTMLElement>('[data-gesture]').forEach(el=>{const id=el.dataset.gesture!;el.classList.toggle('is-on',id===active||poses.includes(id as never)&&two===null);});
+ document.querySelectorAll<HTMLElement>('[data-gesture]').forEach(el=>{const id=el.dataset.gesture!;el.classList.toggle('is-on',id===active||poses.includes(id as never)&&two===null||id==='clap'&&performance.now()-shockAt<500);});
  $('#atp-stage').classList.toggle('has-hands',frame.hands.length>0);
 }
 let lastTick=performance.now(),stopped=false,lastCount=-1;

@@ -7,7 +7,7 @@
     "dev": "node server.mjs",
     "build": "tsc --noEmit && vite build --mode hosted",
     "check": "tsc --noEmit",
-    "deploy": "npm test && npm run build && npx --yes wrangler@4.156.0 deploy",
+    "deploy": "npm test && npm run build && CLOUDFLARE_ACCOUNT_ID=7e87100058e33fa6c8d90aa89fa05b01 npx --yes wrangler@4.156.0 pages deploy dist --project-name spatial-mirror --branch main --commit-dirty=true",
     "deploy:relay": "npx --yes wrangler@4.156.0 deploy --config relay/wrangler.jsonc",
     "test": "tsx --test tests/*.test.ts",
     "test:browser": "node tests/browser.mjs && node tests/studio-browser.mjs && node tests/navigation-browser.mjs && node tests/mechanism-browser.mjs && node tests/camera-start-browser.mjs && node tests/workspace-nav-browser.mjs && node tests/stand-browser.mjs && node tests/connected-browser.mjs && node tests/maths-browser.mjs && node tests/maths-demo-browser.mjs",

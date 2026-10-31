@@ -3,8 +3,9 @@ import type {Landmark} from '../fist';
 import type {Quat} from '../types';
 import type {GestureEvent,GestureFrame,HandPose,HandSide,MirrorPoint,TrackedHand} from './contracts';
 
-const PINCH_ON=.35,PINCH_OFF=.55,CONFIRM_MS=90,PINCH_MS=50,UNPINCH_MS=120,LOST_MS=200,MATCH=.25;
-const CLAP_SPEED=1.2,CLAP_NEAR=.18,CLAP_OPEN_MS=150,CLAP_DROP_MS=180,CLAP_COOLDOWN_MS=600;
+const PINCH_ON=.35,PINCH_OFF=.55,CONFIRM_MS=90,PINCH_MS=50,UNPINCH_MS=120,NONE_MS=220,LOST_MS=200,MATCH=.25,FOLDED_REACH=1.15;
+// Gaps are in palm lengths. MediaPipe finds no hands in a real clap, so Shock fires as the hands close, before contact hides them.
+const CLAP_FAR=2.4,CLAP_NEAR=1.4,CLAP_MERGE=2.2,CLAP_DROP_MS=180,CLAP_COOLDOWN_MS=600;
 const distance=(a:Landmark,b:Landmark)=>Math.hypot(a.x-b.x,a.y-b.y,a.z-b.z);
 const planar=(a:{x:number;y:number},b:{x:number;y:number})=>Math.hypot(a.x-b.x,a.y-b.y);
 const valid=(hand:Landmark[]|undefined):hand is Landmark[]=>hand?.length===21&&hand.every(p=>[p.x,p.y,p.z].every(Number.isFinite));
@@ -21,10 +22,10 @@ export function fingerStates(hand:Landmark[]){
  });
 }
 /** A loose fist often leaves the thumb out sideways, so only a clear reach away from the palm counts. */
-function thumbOut(hand:Landmark[],palm:number){return distance(hand[4],hand[5])>palm*.75;}
-function thumbDirection(hand:Landmark[]):'up'|'down'|null{
+function thumbOut(hand:Landmark[],palm:number){return distance(hand[4],hand[5])>palm*.6;}
+function thumbDirection(hand:Landmark[],palm:number):'up'|'down'|null{
  const dy=hand[4].y-hand[2].y,across=Math.hypot(hand[4].x-hand[2].x,hand[4].z-hand[2].z);
- return Math.abs(dy)>across*1.2?dy<0?'up':'down':null;
+ return Math.abs(dy)>palm*.4&&Math.abs(dy)>across*1.2?dy<0?'up':'down':null;
 }
 export function pinchRatio(hand:Landmark[]){const palm=distance(hand[0],hand[9]);return palm>1e-5?distance(hand[4],hand[8])/palm:Infinity;}
 /** Landmarks are y-down, in image or metric units. A wider pinchLimit is the release threshold. */
@@ -32,12 +33,15 @@ export function classifyPose(hand:Landmark[],pinchLimit=PINCH_ON):HandPose {
  if(!valid(hand))return 'none';
  const palm=distance(hand[0],hand[9]);if(palm<1e-5)return 'none';
  const f=fingerStates(hand),[index,middle,ring,pinky]=f,curled=f.filter(x=>x.curled).length,extended=f.filter(x=>x.extended).length;
+ // A loose real fist leaves fingers neither straight nor curled, but their tips still stay near the palm.
+ const folded=[8,12,16,20].every((tip,i)=>f[i].curled||distance(hand[tip],hand[0])<palm*FOLDED_REACH);
  // A thumb folded over a true fist can touch the index; a pinch keeps the fingertip out from the palm.
- const closed=curled===4&&distance(hand[8],hand[0])<palm*1.15;
+ const closed=folded&&distance(hand[8],hand[0])<palm*1.15;
  if(pinchRatio(hand)<pinchLimit&&!closed)return 'pinch';
- if(curled===4&&thumbOut(hand,palm)){const way=thumbDirection(hand);if(way)return way==='up'?'thumbUp':'thumbDown';}
- if(index.extended&&pinky.extended&&middle.curled&&ring.curled)return thumbOut(hand,palm)?'love':'none';
- if(curled===4)return 'fist';
+ if(folded&&thumbOut(hand,palm)){const way=thumbDirection(hand,palm);if(way)return way==='up'?'thumbUp':'thumbDown';}
+ // The thumb is not checked: it fails on metric landmarks even in clear signs, and 🤘 can mean the same here.
+ if(index.extended&&pinky.extended&&middle.curled&&ring.curled)return 'love';
+ if(folded)return 'fist';
  if(index.extended&&!middle.extended&&!ring.extended&&!pinky.extended&&curled>=2)return 'point';
  if(index.extended&&middle.extended&&!ring.extended&&!pinky.extended&&curled>=1)return 'victory';
  return extended>=3?'open':'none';
@@ -57,24 +61,24 @@ export function palmOrientation(hand:Landmark[]):Quat|null {
  return new Quaternion().setFromRotationMatrix(new Matrix4().makeBasis(side,up,normal)).toArray() as Quat;
 }
 const average=(points:MirrorPoint[],ids:number[])=>{const sum=ids.reduce((p,i)=>({x:p.x+points[i].x,y:p.y+points[i].y,z:p.z+points[i].z}),{x:0,y:0,z:0});return {x:sum.x/ids.length,y:sum.y/ids.length,z:sum.z/ids.length};};
-interface Track {id:number;side:HandSide;pose:HandPose;candidate:HandPose;since:number;seen:number;at:number;openAt:number;poseAge:number;points:MirrorPoint[];palm:MirrorPoint;velocity:{x:number;y:number};orientation:Quat|null;fresh:boolean}
+interface Track {id:number;side:HandSide;pose:HandPose;candidate:HandPose;since:number;seen:number;at:number;poseAge:number;points:MirrorPoint[];palm:MirrorPoint;velocity:{x:number;y:number};orientation:Quat|null;fresh:boolean}
 
 export class GestureTracker {
- private tracks:Track[]=[];private nextId=1;private previous:{a:number;b:number;gap:number;at:number}|null=null;private armed:{at:number;x:number;y:number}|null=null;private lastClap=-Infinity;
- reset(){this.tracks=[];this.previous=null;this.armed=null;}
+ private tracks:Track[]=[];private nextId=1;private previous:{gap:number;at:number;x:number;y:number}|null=null;private armed=false;private lastClap=-Infinity;
+ reset(){this.tracks=[];this.previous=null;this.armed=false;}
  update(hands:Landmark[][],at:number,world:Landmark[][]=[],handedness:(string|null)[]=[],aspect=1):GestureFrame {
-  const events:GestureEvent[]=[],scale=Math.max(.1,aspect),inputs=hands.map((raw,index)=>({raw,index})).filter(({raw})=>valid(raw)).map(({raw,index})=>({points:raw.map(toMirror),metric:valid(world[index])?world[index]:raw.map(p=>({...p,y:p.y/scale})),side:sideFromLabel(handedness[index])}));
+  const events:GestureEvent[]=[],scale=Math.max(.1,aspect),inputs=hands.map((raw,index)=>({raw,index})).filter(({raw})=>valid(raw)).map(({raw,index})=>({points:raw.map(toMirror),metric:valid(world[index])?world[index]:raw.map(p=>({...p,y:p.y/scale})),image:raw.map(p=>({...p,y:p.y/scale})),side:sideFromLabel(handedness[index])}));
   // Nearest wrist first: MediaPipe reorders hands between frames.
   const pairs=this.tracks.flatMap(track=>inputs.map((input,i)=>({track,i,gap:planar(track.points[0],input.points[0])}))).filter(p=>p.gap<MATCH).sort((a,b)=>a.gap-b.gap);
   const used=new Set<number>(),matched=new Set<Track>();this.tracks.forEach(t=>{t.fresh=false;});
   for(const {track,i} of pairs){if(used.has(i)||matched.has(track))continue;used.add(i);matched.add(track);this.advance(track,inputs[i],at,events);}
-  inputs.forEach((input,i)=>{if(used.has(i))return;const track:Track={id:this.nextId++,side:input.side,pose:'none',candidate:'none',since:at,seen:at,at,openAt:-Infinity,poseAge:0,points:input.points,palm:average(input.points,[0,5,9,13,17]),velocity:{x:0,y:0},orientation:null,fresh:true};this.tracks.push(track);this.advance(track,input,at,events);});
+  inputs.forEach((input,i)=>{if(used.has(i))return;const track:Track={id:this.nextId++,side:input.side,pose:'none',candidate:'none',since:at,seen:at,at,poseAge:0,points:input.points,palm:average(input.points,[0,5,9,13,17]),velocity:{x:0,y:0},orientation:null,fresh:true};this.tracks.push(track);this.advance(track,input,at,events);});
   this.tracks=this.tracks.filter(track=>{if(at-track.seen<=LOST_MS)return true;events.push({type:'lost',handId:track.id});return false;});
   for(const track of this.tracks)if(!track.fresh)track.velocity={x:0,y:0};
   this.clap(at,aspect,events);
   return {at,events,hands:this.tracks.map(t=>({id:t.id,side:t.side,pose:t.pose,landmarks:t.points.map(p=>({...p})),palm:{...t.palm},indexTip:{...t.points[8]},pinch:average(t.points,[4,8]),orientation:t.orientation,velocity:{...t.velocity},poseAge:t.poseAge}) satisfies TrackedHand)};
  }
- private advance(track:Track,input:{points:MirrorPoint[];metric:Landmark[];side:HandSide},at:number,events:GestureEvent[]){
+ private advance(track:Track,input:{points:MirrorPoint[];metric:Landmark[];image:Landmark[];side:HandSide},at:number,events:GestureEvent[]){
   const dt=Math.max(.001,(at-track.at)/1000),speed=Math.hypot(track.velocity.x,track.velocity.y);
   // Velocity-adaptive low pass: steady at rest, almost no lag once the hand really moves.
   const alpha=track.at===at?1:1-Math.exp(-dt*2*Math.PI*(1.5+12*speed));
@@ -84,24 +88,29 @@ export class GestureTracker {
   track.points=points;track.palm=palm;track.at=track.seen=at;track.fresh=true;if(input.side!=='unknown')track.side=input.side;
   const next=palmOrientation(input.metric);
   track.orientation=next&&track.orientation?new Quaternion().fromArray(track.orientation).slerp(new Quaternion().fromArray(next),.6).toArray() as Quat:next;
-  const raw=classifyPose(input.metric,track.pose==='pinch'?PINCH_OFF:PINCH_ON);
-  if(raw==='open')track.openAt=at;
+  // Metric depth is noisy and the image view is flat, so either one can settle a hand the other cannot.
+  const limit=track.pose==='pinch'?PINCH_OFF:PINCH_ON,metric=classifyPose(input.metric,limit),raw=metric==='none'?classifyPose(input.image,limit):metric;
   if(raw!==track.candidate){track.candidate=raw;track.since=at;}
-  const wait=track.pose==='pinch'?UNPINCH_MS:raw==='pinch'?PINCH_MS:CONFIRM_MS;
+  // One unclear frame must not drop a held gesture.
+  const wait=raw==='none'?NONE_MS:track.pose==='pinch'?UNPINCH_MS:raw==='pinch'?PINCH_MS:CONFIRM_MS;
   if(raw!==track.pose&&at-track.since>=wait){track.pose=raw;track.poseAge=0;events.push({type:'pose',handId:track.id,pose:raw});}
   else track.poseAge++;
  }
- /** Real claps often merge the hands and lose tracking, so a fast approach that vanishes also counts. */
+ /** Fires when two separated hands close to nearly touching, or vanish while closing. Fists and pinches are Scale and Tear. */
  private clap(at:number,aspect:number,events:GestureEvent[]){
-  if(this.armed&&at-this.armed.at>CLAP_DROP_MS)this.armed=null;
-  const live=this.tracks.filter(t=>t.fresh);
-  const fire=(x:number,y:number)=>{this.armed=null;this.previous=null;if(at-this.lastClap<CLAP_COOLDOWN_MS)return;this.lastClap=at;events.push({type:'clap',x,y});};
-  if(live.length<2){this.previous=null;if(this.armed)fire(this.armed.x,this.armed.y);return;}
-  const [a,b]=live,ratio=Math.max(.1,aspect),gap=Math.hypot(a.palm.x-b.palm.x,(a.palm.y-b.palm.y)/ratio),x=(a.palm.x+b.palm.x)/2,y=(a.palm.y+b.palm.y)/2,last=this.previous;
-  const same=last&&last.a===a.id&&last.b===b.id&&at>last.at;
-  this.previous={a:a.id,b:b.id,gap,at};
-  const opened=at-a.openAt<CLAP_OPEN_MS&&at-b.openAt<CLAP_OPEN_MS;
-  if(same&&opened&&(last.gap-gap)/((at-last.at)/1000)>CLAP_SPEED)this.armed={at,x,y};
+  const live=this.tracks.filter(t=>t.fresh),ratio=Math.max(.1,aspect),last=this.previous;
+  const fire=(x:number,y:number)=>{this.armed=false;this.previous=null;if(at-this.lastClap<CLAP_COOLDOWN_MS)return;this.lastClap=at;events.push({type:'clap',x,y});};
+  if(live.length<2){
+   if(last&&at-last.at>CLAP_DROP_MS){this.previous=null;this.armed=false;}
+   else if(last&&this.armed&&last.gap<CLAP_MERGE)fire(last.x,last.y);
+   return;
+  }
+  const [a,b]=live;
+  if([a.pose,b.pose].some(p=>p==='fist'||p==='pinch')){this.previous=null;this.armed=false;return;}
+  const length=(p:MirrorPoint,q:MirrorPoint)=>Math.hypot(p.x-q.x,(p.y-q.y)/ratio),palm=(length(a.points[0],a.points[9])+length(b.points[0],b.points[9]))/2;
+  if(palm<1e-4)return;
+  const gap=length(a.palm,b.palm)/palm,x=(a.palm.x+b.palm.x)/2,y=(a.palm.y+b.palm.y)/2;
+  this.previous={gap,at,x,y};if(gap>CLAP_FAR)this.armed=true;
   if(this.armed&&gap<CLAP_NEAR)fire(x,y);
  }
 }

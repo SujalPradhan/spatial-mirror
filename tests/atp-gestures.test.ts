@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Quaternion,Vector3} from 'three';
 import {GestureTracker,classifyPose,palmOrientation,sideFromLabel} from '../src/atp/gestures';
+import realHands from './real-hands.json' with {type:'json'};
+import type {Landmark} from '../src/fist';
 import {imageHand,imagePose,metricHand,posedHand,type PoseName} from './hand-fixtures';
 const events=(f:{events:{type:string}[]},type:string)=>f.events.filter(e=>e.type===type).length;
 test('every pose is classified from metric and image landmarks',()=>{
@@ -64,14 +66,32 @@ test('orientation delta matches the mirrored wrist turn for either hand shape',(
 function approach(t:GestureTracker,start=0){
  let f;for(let i=0;i<8;i++){const gap=.35-i*.05;f=t.update([imagePose('open',.5-gap),imagePose('open',.5+gap)],start+i*30,[posedHand('open'),posedHand('open')]);if(f.events.some(e=>e.type==='clap'))return f;}return f!;
 }
-test('a clap fires once, and slow hands coming together do not',()=>{
+test('Shock fires once as hands close at any speed, and needs them apart again to re-arm',()=>{
  const t=new GestureTracker(),f=approach(t);assert.equal(events(f,'clap'),1);
  assert.equal(events(t.update([imagePose('open',.48),imagePose('open',.52)],260,[posedHand('open'),posedHand('open')]),'clap'),0);
- const slow=new GestureTracker();let count=0;for(let i=0;i<60;i++){const gap=.35-i*.005;count+=events(slow.update([imagePose('open',.5-gap),imagePose('open',.5+gap)],i*30,[posedHand('open'),posedHand('open')]),'clap');}assert.equal(count,0);
+ const slow=new GestureTracker();let count=0;for(let i=0;i<60;i++){const gap=.35-i*.005;count+=events(slow.update([imagePose('open',.5-gap),imagePose('open',.5+gap)],i*30,[posedHand('open'),posedHand('open')]),'clap');}assert.equal(count,1);
+});
+test('hands edge-on to the camera still trigger Shock, while fists and pinches do not',()=>{
+ const side=new GestureTracker(),blur=posedHand('open').map(p=>({...p,x:p.x*.2}));let count=0;
+ for(let i=0;i<30;i++){const gap=.4-i*.012,hand=(x:number)=>imagePose('point',x);count+=events(side.update([hand(.5-gap),hand(.5+gap)],i*30,[blur,blur]),'clap');}assert.equal(count,1);
+ for(const pose of ['fist','pinch'] as PoseName[]){const t=new GestureTracker();let fired=0;for(let i=0;i<30;i++){const gap=.4-i*.012;fired+=events(t.update([imagePose(pose,.5-gap),imagePose(pose,.5+gap)],i*30,[posedHand(pose),posedHand(pose)]),'clap');}assert.equal(fired,0,pose);}
+});
+test('hands far apart never trigger Shock on their own',()=>{
+ const t=new GestureTracker();let fired=0;for(let i=0;i<40;i++)fired+=events(t.update([imagePose('open',.2),imagePose('open',.8)],i*30,[posedHand('open'),posedHand('open')]),'clap');assert.equal(fired,0);
 });
 test('a clap that merges the hands and loses tracking still counts',()=>{
  const t=new GestureTracker();t.update([imagePose('open',.2),imagePose('open',.8)],0,[posedHand('open'),posedHand('open')]);
  t.update([imagePose('open',.3),imagePose('open',.7)],30,[posedHand('open'),posedHand('open')]);
  t.update([imagePose('open',.38),imagePose('open',.62)],60,[posedHand('open'),posedHand('open')]);
  assert.equal(events(t.update([],90),'clap'),1);
+});
+
+// Coordinates MediaPipe produced from real photos: Google samples and Wikimedia Commons. No images are stored.
+for(const hand of realHands)test(`real ${hand.source} reads as ${hand.pose} on laptop and phone paths`,()=>{
+ const run=(world:Landmark[][])=>{const t=new GestureTracker();let f;for(let i=0;i<6;i++)f=t.update([hand.image],i*30,world,[],hand.aspect);return f!.hands[0].pose;};
+ assert.equal(run([hand.world]),hand.pose,'laptop');assert.equal(run([]),hand.pose,'phone');
+});
+test('a single unclear frame does not drop a held gesture',()=>{
+ const t=new GestureTracker(),fist=imagePose('fist'),world=posedHand('fist');let f;for(let i=0;i<6;i++)f=t.update([fist],i*30,[world]);assert.equal(f!.hands[0].pose,'fist');
+ const unclear=posedHand('open').map((p,i)=>i%4===0?{...p,y:p.y*.4}:{...p,x:p.x*.5});for(let i=6;i<9;i++)f=t.update([imagePose('open')],i*30,[unclear]);assert.equal(f!.hands[0].pose,'fist');
 });

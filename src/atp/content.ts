@@ -11,7 +11,7 @@ export const gestureGuide:{id:string;pose:HandPose|'both-pinch'|'both-fist'|'cla
  {id:'love',pose:'love',glyph:'🤟',label:'Skin'},
  {id:'both-pinch',pose:'both-pinch',glyph:'🤏🤏',label:'Tear'},
  {id:'both-fist',pose:'both-fist',glyph:'✊✊',label:'Scale'},
- {id:'clap',pose:'clap',glyph:'👏',label:'Shock'},
+ {id:'clap',pose:'clap',glyph:'👐',label:'Shock'},
 ];
 
 export const sources=[
