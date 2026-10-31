@@ -7,6 +7,9 @@ import {getSession,hosted,webcamOnly} from '../session';
 import {HandProbe} from '../hand-probe';
 import type {Landmark} from '../fist';
 import type {Packet,Quat} from '../types';
+import type {TrackingFrame} from '../tracking/model';
+// @ts-ignore Shared relay protocol is plain JavaScript.
+import {validTrackingFrame} from '../../tracking-protocol.mjs';
 import type {AtpInputSource,AtpInputTarget,AtpState,GestureFrame} from './contracts';
 import {gestureGuide,sources,scientificNote} from './content';
 import {initialAtp,validateAtp,clampPhase,homeView} from './model';
@@ -18,21 +21,23 @@ import {AtpAudio} from './audio';
 const $=<T extends HTMLElement=HTMLElement>(id:string)=>document.querySelector<T>(id)!;
 const clamp=(n:number,min:number,max:number)=>Math.max(min,Math.min(max,n));
 document.title='ATP Synthase — Spatial Studio';
-$('#app').innerHTML=`<main class="atp-page">${workspaceNav()}<section id="atp-stage" aria-label="ATP synthase, held in your hands"><video id="atp-video" playsinline muted></video><div id="atp-viewport" tabindex="0" aria-label="3D ATP synthase. Drag a chain to pluck it, drag elsewhere to turn, scroll to zoom, space to spin."></div><canvas id="atp-hand-overlay" hidden></canvas><h1 class="atp-mark">ATP <span>synthase</span></h1><p class="atp-count" aria-live="off"><output id="atp-count">0</output> ATP</p><button id="atp-camera" class="atp-enter">Step into the mirror</button><ul id="atp-gestures" aria-label="Gestures">${gestureGuide.map(g=>`<li data-gesture="${g.id}"><i aria-hidden="true">${g.glyph}</i>${g.label}</li>`).join('')}</ul><p id="atp-status" role="status"></p><div class="atp-corner"><button id="atp-freeze" hidden>Resume</button>${webcamOnly?'':'<button id="atp-phone">Connect phone</button>'}<button id="atp-sound" aria-pressed="true">Sound</button><button id="atp-recenter">Recenter</button><button id="atp-sources">About</button></div><div id="atp-loading" role="status">Loading the molecule…</div></section><dialog id="atp-about"><h2>A real molecule, in your hands</h2><p>${scientificNote}</p><p>Everything stays on this laptop: hand tracking runs in the browser and no video leaves it.</p><ul>${sources.map(s=>`<li><a href="${s.url}" target="_blank" rel="noopener">${s.label}</a></li>`).join('')}</ul><button id="atp-about-close">Back</button></dialog></main>`;
+$('#app').innerHTML=`<main class="atp-page">${workspaceNav()}<section id="atp-stage" aria-label="ATP synthase, held in your hands"><video id="atp-video" playsinline muted></video><div id="atp-viewport" tabindex="0" aria-label="3D ATP synthase. Drag a chain to pluck it, drag elsewhere to turn, scroll to zoom, space to spin."></div><canvas id="atp-hand-overlay" hidden></canvas><h1 class="atp-mark">ATP <span>synthase</span></h1><p class="atp-count" aria-live="off"><output id="atp-count">0</output> ATP</p><button id="atp-camera" class="atp-enter">Step into the mirror</button><ul id="atp-gestures" aria-label="Gestures">${gestureGuide.map(g=>`<li data-gesture="${g.id}"><i aria-hidden="true">${g.glyph}</i>${g.label}</li>`).join('')}</ul><p id="atp-status" role="status"></p><div class="atp-corner"><button id="atp-freeze" hidden>Resume</button>${webcamOnly?'':'<button id="atp-phone">Connect phone</button>'}<button id="atp-sound" aria-pressed="true">Sound</button><button id="atp-recenter">Recenter</button><button id="atp-sources">About</button></div><div id="atp-loading" role="status">Loading the molecule…</div></section><dialog id="atp-about"><h2>A real molecule, in your hands</h2><p>${scientificNote}</p><p>Hand tracking runs in your browser and no video leaves the device. A paired phone sends only hand positions.</p><ul>${sources.map(s=>`<li><a href="${s.url}" target="_blank" rel="noopener">${s.label}</a></li>`).join('')}</ul><button id="atp-about-close">Back</button></dialog></main>`;
 let state=initialAtp(),client:ControlClient|null=null,owns=false,playing=false,context=0,ready=false,muted=false;
 let drag:{id:number;x:number;y:number;view:AtpState['view'];pluck:boolean}|null=null,lastFine=-Infinity,lastPublish=0,lastDescriptor='',spoken='';
 let owner:AtpInputSource|null=null,before:AtpState|null=null,history:AtpState[]=[];
 const empty=():GestureFrame=>({at:0,hands:[],events:[]});
 const viewport=$('#atp-viewport'),view=new AtpView(viewport),engine=new AtpEngine(view),audio=new AtpAudio(),tracker=new GestureTracker();
 let frame=empty(),lastHands=-Infinity;
+const trackingSession=crypto.randomUUID();let phoneCapture='',phoneSequence=0,phoneFrames=0,phoneCamera=false;
 function notice(s:string){if(s!==spoken)$('#atp-status').textContent=spoken=s;}
 function angle(){return ((engine.rotorDegrees%360)+360)%360;}
 // The relay validates a shared descriptor shape, so retired lesson fields stay as constants.
-function descriptor(){return {enabled:!state.frozen,frozen:state.frozen,context,chapter:0,guided:false,tool:state.tool,representation:'structure',phase:Math.round(angle()),selected:null,zoom:state.view.zoom,playing};}
+function descriptor(){return {enabled:!state.frozen,frozen:state.frozen,context,chapter:0,guided:false,tool:state.tool,representation:'structure',phase:Math.round(angle()),selected:null,zoom:state.view.zoom,playing,captureEnabled:!state.frozen,trackingSession};}
 function publish(){client?.send({type:'state',...descriptor()});lastDescriptor=JSON.stringify(descriptor());lastPublish=performance.now();}
 function remember(old:AtpState){if(JSON.stringify(old)!==JSON.stringify(state)){history.push(old);if(history.length>25)history.shift();}}
 function finish(source:AtpInputSource|null){if(!source||owner!==source)return;if(before)remember(before);before=null;owner=null;}
-function begin(source:AtpInputSource){if(!owns||state.frozen||document.hidden||!document.hasFocus()||!ready)return false;if(owner&&owner!==source)return false;if(!owner){playing=false;owner=source;before=structuredClone(state);}return true;}
+// The laptop may lose focus while someone reaches for the phone, so phone-camera hands only need a visible tab.
+function begin(source:AtpInputSource){if(!owns||state.frozen||document.hidden||!document.hasFocus()&&!(source==='hand'&&phoneCamera)||!ready)return false;if(owner&&owner!==source)return false;if(!owner){playing=false;owner=source;before=structuredClone(state);}return true;}
 const target:AtpInputTarget={state:()=>state,begin,view:q=>{state.view.q=q;},phase:n=>{state.phase=clampPhase(n);engine.setRotorDegrees(state.phase);},end:finish};
 const phone=new AtpPhoneInput(target);
 function release(){phone.release();finish(owner);drag=null;engine.pointerUp();}
@@ -40,7 +45,18 @@ function change(fn:()=>void,keep=true,allowFrozen=false){if(!owns||state.frozen&
 function undo(){change(()=>{const old=history.pop();if(old)state=old;engine.setRotorDegrees(state.phase);},false,true);}
 function freeze(value:boolean){change(()=>{state.frozen=value;},true,true);$('#atp-freeze').hidden=!state.frozen;}
 function recenter(){change(()=>{state.view=homeView();});}
+function endPhoneCamera(){if(!phoneCamera)return;phoneCamera=false;phoneCapture='';phoneSequence=0;tracker.reset();frame=empty();notice('');}
+function phoneHands(f:TrackingFrame){
+ const now=client?.serverTime()??null;if(now===null||f.frameAt===null||Math.abs(now-f.frameAt)>400)return;
+ if(phoneCapture!==f.captureId){tracker.reset();phoneCapture=f.captureId;phoneSequence=0;}if(f.frameId<=phoneSequence)return;phoneSequence=f.frameId;phoneFrames++;
+ // No phone video is shown here, so the whole phone picture maps onto the whole stage.
+ if(!phoneCamera){phoneCamera=true;view.setVideoAspect(0);notice('Phone camera is live.');}
+ hands(f.hands,performance.now(),[],[],f.width/f.height);
+}
 function receive(p:Packet){
+ if(p.type==='tracking-stop'){endPhoneCamera();return;}
+ // The laptop's own mirror wins if both cameras are running.
+ if(p.type==='tracking-frame'){if(owns&&!stream&&!document.hidden&&validTrackingFrame(p))phoneHands(p as unknown as TrackingFrame);return;}
  if(p.type==='status'){owns=!!p.owner;phone.enabled=owns;if(!owns){release();playing=false;}}
  if(['local-release','lost','disconnected'].includes(p.type)){owns=false;release();playing=false;}
  if(p.type==='phone-lost'){phone.release();finish('phone');}
@@ -87,7 +103,7 @@ viewport.onkeydown=e=>{if(e.key===' '&&!state.frozen){e.preventDefault();void au
 let stream:MediaStream|null=null,probe:HandProbe|null=null,cameraStarting=false,cameraGeneration=0;
 const video=$<HTMLVideoElement>('#atp-video');
 function stopCamera(){cameraGeneration++;cameraStarting=false;probe?.stop();probe=null;stream?.getTracks().forEach(t=>t.stop());stream=null;video.srcObject=null;tracker.reset();frame=empty();$('#atp-stage').classList.remove('is-live');$('#atp-camera').textContent='Step into the mirror';$('#atp-camera').removeAttribute('aria-pressed');}
-function hands(raw:Landmark[][],at:number,world:Landmark[][],handedness:(string|null)[]=[]){if(raw.length)lastHands=performance.now();frame=tracker.update(raw,at,world,handedness,video.videoWidth/video.videoHeight||16/9);}
+function hands(raw:Landmark[][],at:number,world:Landmark[][],handedness:(string|null)[]=[],aspect=video.videoWidth/video.videoHeight||16/9){if(raw.length)lastHands=performance.now();frame=tracker.update(raw,at,world,handedness,aspect);}
 async function startCamera(){
  if(stream||cameraStarting){stopCamera();return;}
  const generation=++cameraGeneration;cameraStarting=true;void audio.start();$('#atp-camera').textContent='Opening camera…';
@@ -95,7 +111,7 @@ async function startCamera(){
   const next=await navigator.mediaDevices.getUserMedia({video:{width:{ideal:1280},height:{ideal:720}},audio:false});
   if(generation!==cameraGeneration){next.getTracks().forEach(t=>t.stop());return;}
   stream=next;video.srcObject=next;await video.play();if(generation!==cameraGeneration)return;
-  view.setVideoAspect(video.videoWidth/video.videoHeight);
+  endPhoneCamera();view.setVideoAspect(video.videoWidth/video.videoHeight);
   // The skeleton is drawn in the molecule's own mirrored space, so the probe's raw overlay stays hidden.
   probe=new HandProbe(video,$<HTMLCanvasElement>('#atp-hand-overlay'),(data,message)=>{if(data.status==='error'){notice(message);stopCamera();}},(raw,at,world,meta)=>{if(owns&&!document.hidden&&document.hasFocus())hands(raw,at,world,meta?.handedness);else{tracker.reset();frame=empty();}},{preferGPU:true});
   probe.start();$('#atp-stage').classList.add('is-live');$('#atp-camera').textContent='Leave the mirror';$('#atp-camera').setAttribute('aria-pressed','true');
@@ -129,4 +145,4 @@ function tick(now:number){
 requestAnimationFrame(tick);
 function interrupt(){release();playing=false;publish();}
 window.addEventListener('blur',interrupt);document.addEventListener('visibilitychange',()=>{if(document.hidden){interrupt();stopCamera();}});document.addEventListener('studio-before-navigation',()=>{interrupt();stopCamera();});window.addEventListener('pagehide',()=>{stopped=true;stopCamera();release();client?.close();binding.close();audio.stop();view.dispose();});
-(window as any).__atpStudio={get state(){return structuredClone(state);},get playing(){return playing;},get ready(){return ready;},get owns(){return owns;},get phoneHeld(){return phone.held;},get owner(){return owner;},get context(){return context;},get atp(){return engine.atp;},get frame(){return frame;},hands(raw:Landmark[][],world:Landmark[][]=[],handedness:(string|null)[]=[]){hands(raw,performance.now(),world,handedness);}};
+(window as any).__atpStudio={get state(){return structuredClone(state);},get playing(){return playing;},get ready(){return ready;},get owns(){return owns;},get phoneHeld(){return phone.held;},get owner(){return owner;},get context(){return context;},get atp(){return engine.atp;},get frame(){return frame;},get phoneFrames(){return phoneFrames;},get phoneCamera(){return phoneCamera;},hands(raw:Landmark[][],world:Landmark[][]=[],handedness:(string|null)[]=[]){hands(raw,performance.now(),world,handedness);}};

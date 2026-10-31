@@ -31,7 +31,7 @@ function descriptor(workspace,state){
  if(workspace==='box'&&(!['lid','tray'].includes(s.selected)||!between(s.angle,0,120)||!between(s.lift,0,160)||!between(s.limit,0,120)))return null;
  if(workspace==='art'&&(!s.frame||!finiteQ(s.frame.q)||!Array.isArray(s.frame.origin)||s.frame.origin.length!==3||s.frame.origin.some(n=>!between(n,-50,50))||!['stable','twist'].includes(s.kind)||!/^#[a-f0-9]{6}$/i.test(s.color)||!between(s.width,.005,.1)))return null;
  if(workspace==='maths'&&(!['point','cloud','challenge'].includes(s.stage)||!['rotate','annotate'].includes(s.mode)||!s.frame||!finiteQ(s.frame.q)||!Array.isArray(s.frame.origin)||s.frame.origin.length!==3||s.frame.origin.some(n=>!between(n,-50,50))||s.frame.aspect!==1||typeof s.canDraw!=='boolean'))return null;
- if(workspace==='atp'&&(!Number.isInteger(s.chapter)||!between(s.chapter,0,5)||!['view','rotor'].includes(s.tool)||!['structure','mechanism'].includes(s.representation)||!between(s.phase,0,360)||![null,'rotor','stator','head','membrane'].includes(s.selected)||typeof s.guided!=='boolean'||s.zoom!==undefined&&!between(s.zoom,.65,2.5)||s.playing!==undefined&&typeof s.playing!=='boolean'))return null;
+ if(workspace==='atp'&&(!Number.isInteger(s.chapter)||!between(s.chapter,0,5)||!['view','rotor'].includes(s.tool)||!['structure','mechanism'].includes(s.representation)||!between(s.phase,0,360)||![null,'rotor','stator','head','membrane'].includes(s.selected)||typeof s.guided!=='boolean'||s.zoom!==undefined&&!between(s.zoom,.65,2.5)||s.playing!==undefined&&typeof s.playing!=='boolean'||s.captureEnabled!==undefined&&(typeof s.captureEnabled!=='boolean'||!validCaptureId(s.trackingSession))))return null;
  return s;
 }
 // Shared protocol; works with Node and Cloudflare WebSocket implementations.
@@ -65,13 +65,13 @@ export function createControlRoom({initialEpoch=0,requireFresh=false}={}){
    if(!acked||p.context!==target.state.context)return;
    if(requireFresh&&['frame','action'].includes(p.type)){p=freshInput(p,Date.now());if(!p)return;}
    if(p.type==='tracking-frame'){
-    if(!['tracking','pottery'].includes(target.workspace)||!target.state.captureEnabled||!validTrackingFrame(p)||!Number.isFinite(p.at)||Date.now()-p.at>1500||p.at-Date.now()>100)return;
+    if(!['tracking','pottery','atp'].includes(target.workspace)||!target.state.captureEnabled||!validTrackingFrame(p)||!Number.isFinite(p.at)||Date.now()-p.at>1500||p.at-Date.now()>100)return;
     send(owner,{type:'tracking-frame',captureId:p.captureId,width:p.width,height:p.height,frameId:p.frameId,hands:p.hands,frameAt:p.frameAt,dispatchAt:p.dispatchAt,videoTimeMs:p.videoTimeMs,timestampSource:p.timestampSource,clockRttMs:p.clockRttMs,inferenceMs:p.inferenceMs,processedHz:p.processedHz,at:p.at,context:p.context});return;
    }
    if(p.type==='tracking-photo'){
     if(target.workspace==='tracking'&&target.state.captureEnabled&&pendingPhoto?.id===p.requestId&&pendingPhoto.expires>Date.now()&&validTrackingPhoto(p)){pendingPhoto=null;send(owner,{type:'tracking-photo',requestId:p.requestId,jpeg:p.jpeg,captureId:p.captureId,width:p.width,height:p.height,context:p.context});}return;
    }
-   if(p.type==='tracking-stop'&&['tracking','pottery'].includes(target.workspace)){pendingPhoto=null;send(owner,{type:'tracking-stop',context:p.context});return;}
+   if(p.type==='tracking-stop'&&['tracking','pottery','atp'].includes(target.workspace)){pendingPhoto=null;send(owner,{type:'tracking-stop',context:p.context});return;}
    if(p.type==='frame'){
     if(typeof p.hold!=='boolean'||typeof p.active!=='boolean'||typeof p.visible!=='boolean'||!Number.isFinite(p.screenAngle)||typeof p.source!=='string'||p.source.length>120||p.hold&&!finiteQ(p.q))return;
     send(owner,{...p,epoch,seq:undefined,received:Date.now()});return;

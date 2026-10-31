@@ -46,7 +46,7 @@ function receive(p:Packet){
   const next=[p.documentId,p.epoch,p.context].join(':');if(next!==scope){release();for(const item of pending.values())item.recover=true;scope=next;ackScope='';orientations.reset();clearPad();}
   state=p;if(holdRequest&&p.motionEngagement===holdRequest.id&&!holdRequest.acked){holdRequest.acked=true;hold=true;sendFrame();}tracking.update(p);if(hub.active&&(p.workspace==='tracking'||p.workspace==='pottery'&&p.stage!=='inspect'))hub.stop();maybeAck();update();
  }
- if(['waiting','disconnected'].includes(p.type)){release();for(const item of pending.values())item.recover=true;if(p.type==='waiting'&&(state?.workspace==='tracking'||state?.workspace==='pottery'&&state?.stage==='shape')){state={...state,enabled:false};tracking.pause();}else{state=null;tracking.update(null);}ackScope='';update();}
+ if(['waiting','disconnected'].includes(p.type)){release();for(const item of pending.values())item.recover=true;if(p.type==='waiting'&&(state?.workspace==='tracking'||state?.workspace==='atp'||state?.workspace==='pottery'&&state?.stage==='shape')){state={...state,enabled:false};tracking.pause();}else{state=null;tracking.update(null);}ackScope='';update();}
  if(p.type==='ink-rejected'){const item=pending.get(String(p.strokeId));if(item&&item.documentId===p.documentId){pending.delete(item.id);if(current===item){current=null;selectedPointer=null;}notice=String(p.reason);}return;}
  if(p.type==='checkpoint'){
   const item=pending.get(String(p.strokeId));if(item&&item.documentId===p.documentId){const count=Math.max(0,Math.min(item.points.length,Number(p.index)-item.base+1));item.points.splice(0,count);item.base+=count;if(p.finished&&item.finished&&item.points.length===0)pending.delete(item.id);}

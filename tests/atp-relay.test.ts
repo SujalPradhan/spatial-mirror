@@ -21,6 +21,12 @@ test('ATP accepts bounded descriptors; rejects malformed lesson state without ta
   const bad=fixture({...descriptor(),...invalid} as any);assert.equal(bad.room.status.workspace,null,JSON.stringify(invalid));
  }
 });
+test('ATP phone camera landmarks reach the desktop only while capture is enabled',()=>{
+ const on={...descriptor(),captureEnabled:true,trackingSession:'mirror-1'},frame={type:'tracking-frame',captureId:'cam-1',width:640,height:480,frameId:1,hands:[],frameAt:Date.now(),dispatchAt:Date.now(),videoTimeMs:1,timestampSource:'bitmap-start-estimate',clockRttMs:null,inferenceMs:1,processedHz:24,context:0,at:Date.now()};
+ const f=fixture(on as any);f.ack();f.phone.receive({...frame,epoch:f.room.status.epoch});assert.equal(f.desktop.messages.filter(p=>p.type==='tracking-frame').length,1);
+ const off=fixture({...on,captureEnabled:false} as any);off.ack();off.phone.receive({...frame,epoch:off.room.status.epoch});assert.equal(off.desktop.messages.filter(p=>p.type==='tracking-frame').length,0);
+ assert.equal(fixture({...on,trackingSession:'bad id'} as any).room.status.workspace,null);
+});
 test('ATP action delivery requires acknowledgement, current epoch and context',()=>{
  const f=fixture();f.action('atp-next');assert.equal(f.desktop.messages.filter(p=>p.type==='action').length,0);f.ack();
  f.action('atp-next',undefined,{epoch:f.room.status.epoch-1});f.action('atp-next',undefined,{context:1});f.action('atp-next');
