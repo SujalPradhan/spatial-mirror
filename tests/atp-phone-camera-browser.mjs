@@ -20,7 +20,7 @@ try{
  await d.waitForFunction(()=>window.__atpStudio.phoneFrames>2&&window.__atpStudio.phoneCamera);
  for(const name of ['open','fist','pinch','victory','thumbUp'])await pose(name);
  const x=await d.evaluate(()=>window.__atpStudio.frame.hands[0].palm.x);assert.ok(Math.abs(x-.5)<.25,'hand stays near the middle');
- await p.screenshot({path:process.env.SHOT||'/dev/null'});
+ if(process.env.SHOT)await p.screenshot({path:process.env.SHOT});
  // A held fist follows the wrist, so turn the hand in the image plane and expect the molecule to turn.
  await pose('fist');const held=await d.evaluate(()=>JSON.stringify(window.__atpStudio.state.view.q)),c=Math.cos(.7),s=Math.sin(.7);
  await p.evaluate(h=>{window.testHands=[h];},posedHand('fist').map(q=>({x:.5+(q.x*c-q.y*s)*.14,y:.7+(q.x*s+q.y*c)*.14*aspect,z:q.z*.14})));
