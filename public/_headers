@@ -1,0 +1,6 @@
+/*
+  Permissions-Policy: accelerometer=(self), gyroscope=(self), magnetometer=(self), camera=(self), microphone=(self)
+  X-Content-Type-Options: nosniff
+
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable

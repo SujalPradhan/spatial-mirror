@@ -7,6 +7,8 @@
     "dev": "node server.mjs",
     "build": "tsc --noEmit && vite build --mode hosted",
     "check": "tsc --noEmit",
+    "deploy": "npm test && npm run build && npx --yes wrangler@4.156.0 deploy",
+    "deploy:relay": "npx --yes wrangler@4.156.0 deploy --config relay/wrangler.jsonc",
     "test": "tsx --test tests/*.test.ts",
     "test:browser": "node tests/browser.mjs && node tests/studio-browser.mjs && node tests/navigation-browser.mjs && node tests/mechanism-browser.mjs && node tests/camera-start-browser.mjs && node tests/workspace-nav-browser.mjs && node tests/stand-browser.mjs && node tests/connected-browser.mjs && node tests/maths-browser.mjs && node tests/maths-demo-browser.mjs",
     "test:maths": "node tests/maths-browser.mjs && node tests/maths-demo-browser.mjs",
