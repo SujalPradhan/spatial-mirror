@@ -3,8 +3,8 @@ import type {Landmark} from '../fist';
 import type {Quat} from '../types';
 import type {GestureEvent,GestureFrame,HandPose,HandSide,MirrorPoint,TrackedHand} from './contracts';
 
-const PINCH_ON=.35,PINCH_OFF=.55,CONFIRM_MS=90,PINCH_MS=50,UNPINCH_MS=120,NONE_MS=220,LOST_MS=200,MATCH=.25,FOLDED_REACH=1.15;
-// Gaps are in palm lengths. MediaPipe finds no hands in a real clap, so Shock fires as the hands close, before contact hides them.
+const PINCH_ON=.35,PINCH_OFF=.55,CONFIRM_MS=90,PINCH_MS=50,UNPINCH_MS=120,UNTHUMB_MS=200,NONE_MS=220,LOST_MS=200,MATCH=.25,FOLDED_REACH=1.15;
+// Gaps are in palm lengths. The tracker finds no hands in a real clap, so Shock fires as the hands close, before contact hides them.
 const CLAP_FAR=2.4,CLAP_NEAR=1.4,CLAP_MERGE=2.2,CLAP_DROP_MS=180,CLAP_COOLDOWN_MS=600;
 const distance=(a:Landmark,b:Landmark)=>Math.hypot(a.x-b.x,a.y-b.y,a.z-b.z);
 const planar=(a:{x:number;y:number},b:{x:number;y:number})=>Math.hypot(a.x-b.x,a.y-b.y);
@@ -23,13 +23,14 @@ export function fingerStates(hand:Landmark[]){
 }
 /** A loose fist often leaves the thumb out sideways, so only a clear reach away from the palm counts. */
 function thumbOut(hand:Landmark[],palm:number){return distance(hand[4],hand[5])>palm*.6;}
-function thumbDirection(hand:Landmark[],palm:number):'up'|'down'|null{
+/** A held thumb may lean further before it counts as gone, so a tilting hand does not drop into a fist and grab. */
+function thumbDirection(hand:Landmark[],palm:number,held:boolean):'up'|'down'|null{
  const dy=hand[4].y-hand[2].y,across=Math.hypot(hand[4].x-hand[2].x,hand[4].z-hand[2].z);
- return Math.abs(dy)>palm*.4&&Math.abs(dy)>across*1.2?dy<0?'up':'down':null;
+ return Math.abs(dy)>palm*(held?.25:.4)&&Math.abs(dy)>across*(held?.6:1.2)?dy<0?'up':'down':null;
 }
 export function pinchRatio(hand:Landmark[]){const palm=distance(hand[0],hand[9]);return palm>1e-5?distance(hand[4],hand[8])/palm:Infinity;}
-/** Landmarks are y-down, in image or metric units. A wider pinchLimit is the release threshold. */
-export function classifyPose(hand:Landmark[],pinchLimit=PINCH_ON):HandPose {
+/** Landmarks are y-down, in image or metric units. A wider pinchLimit is the release threshold, and heldThumb the same for 👍 and 👎. */
+export function classifyPose(hand:Landmark[],pinchLimit=PINCH_ON,heldThumb=false):HandPose {
  if(!valid(hand))return 'none';
  const palm=distance(hand[0],hand[9]);if(palm<1e-5)return 'none';
  const f=fingerStates(hand),[index,middle,ring,pinky]=f,curled=f.filter(x=>x.curled).length,extended=f.filter(x=>x.extended).length;
@@ -38,7 +39,7 @@ export function classifyPose(hand:Landmark[],pinchLimit=PINCH_ON):HandPose {
  // A thumb folded over a true fist can touch the index; a pinch keeps the fingertip out from the palm.
  const closed=folded&&distance(hand[8],hand[0])<palm*1.15;
  if(pinchRatio(hand)<pinchLimit&&!closed)return 'pinch';
- if(folded&&thumbOut(hand,palm)){const way=thumbDirection(hand,palm);if(way)return way==='up'?'thumbUp':'thumbDown';}
+ if(folded&&thumbOut(hand,palm)){const way=thumbDirection(hand,palm,heldThumb);if(way)return way==='up'?'thumbUp':'thumbDown';}
  // The thumb is not checked: it fails on metric landmarks even in clear signs, and 🤘 can mean the same here.
  if(index.extended&&pinky.extended&&middle.curled&&ring.curled)return 'love';
  if(folded)return 'fist';
@@ -46,7 +47,7 @@ export function classifyPose(hand:Landmark[],pinchLimit=PINCH_ON):HandPose {
  if(index.extended&&middle.extended&&!ring.extended&&!pinky.extended&&curled>=1)return 'victory';
  return extended>=3?'open':'none';
 }
-/** The raw feed is unmirrored while MediaPipe assumes a selfie mirror, so its label is the opposite hand. */
+/** The raw feed is unmirrored while the tracker assumes a selfie mirror, so its label is the opposite hand. */
 export function sideFromLabel(label:string|null|undefined):HandSide {return label==='Left'?'right':label==='Right'?'left':'unknown';}
 /** The one place raw camera x becomes what the viewer sees on screen. */
 const toMirror=(p:Landmark):MirrorPoint=>({x:1-p.x,y:p.y,z:p.z});
@@ -68,7 +69,7 @@ export class GestureTracker {
  reset(){this.tracks=[];this.previous=null;this.armed=false;}
  update(hands:Landmark[][],at:number,world:Landmark[][]=[],handedness:(string|null)[]=[],aspect=1):GestureFrame {
   const events:GestureEvent[]=[],scale=Math.max(.1,aspect),inputs=hands.map((raw,index)=>({raw,index})).filter(({raw})=>valid(raw)).map(({raw,index})=>({points:raw.map(toMirror),metric:valid(world[index])?world[index]:raw.map(p=>({...p,y:p.y/scale})),image:raw.map(p=>({...p,y:p.y/scale})),side:sideFromLabel(handedness[index])}));
-  // Nearest wrist first: MediaPipe reorders hands between frames.
+  // Nearest wrist first: the tracker reorders hands between frames.
   const pairs=this.tracks.flatMap(track=>inputs.map((input,i)=>({track,i,gap:planar(track.points[0],input.points[0])}))).filter(p=>p.gap<MATCH).sort((a,b)=>a.gap-b.gap);
   const used=new Set<number>(),matched=new Set<Track>();this.tracks.forEach(t=>{t.fresh=false;});
   for(const {track,i} of pairs){if(used.has(i)||matched.has(track))continue;used.add(i);matched.add(track);this.advance(track,inputs[i],at,events);}
@@ -89,10 +90,10 @@ export class GestureTracker {
   const next=palmOrientation(input.metric);
   track.orientation=next&&track.orientation?new Quaternion().fromArray(track.orientation).slerp(new Quaternion().fromArray(next),.6).toArray() as Quat:next;
   // Metric depth is noisy and the image view is flat, so either one can settle a hand the other cannot.
-  const limit=track.pose==='pinch'?PINCH_OFF:PINCH_ON,metric=classifyPose(input.metric,limit),raw=metric==='none'?classifyPose(input.image,limit):metric;
+  const limit=track.pose==='pinch'?PINCH_OFF:PINCH_ON,thumb=track.pose==='thumbUp'||track.pose==='thumbDown',metric=classifyPose(input.metric,limit,thumb),raw=metric==='none'?classifyPose(input.image,limit,thumb):metric;
   if(raw!==track.candidate){track.candidate=raw;track.since=at;}
   // One unclear frame must not drop a held gesture.
-  const wait=raw==='none'?NONE_MS:track.pose==='pinch'?UNPINCH_MS:raw==='pinch'?PINCH_MS:CONFIRM_MS;
+  const wait=raw==='none'?NONE_MS:track.pose==='pinch'?UNPINCH_MS:thumb&&raw==='fist'?UNTHUMB_MS:raw==='pinch'?PINCH_MS:CONFIRM_MS;
   if(raw!==track.pose&&at-track.since>=wait){track.pose=raw;track.poseAge=0;events.push({type:'pose',handId:track.id,pose:raw});}
   else track.poseAge++;
  }

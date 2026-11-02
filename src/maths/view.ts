@@ -2,7 +2,13 @@ import * as T from 'three';
 import {annotationPoint,basis,centre,dataset,pca,project,type LessonState} from './model';
 import type {Vec3} from '../types';
 
-const colours={original:0x256b58,projected:0xc28229,selected:0xa84169,plane:0x83aaa1,pca:0x7277bb};
+const colours={original:0x5fd6ab,projected:0xffc861,selected:0xff6fa3,plane:0x9fd0c4,pca:0xa8adff,ink:0x7fb2ff};
+// The stage gradient lives in the scene, so the canvas stays opaque for PNG export and demo recording.
+function stageBackground(){
+  const canvas=document.createElement('canvas');canvas.width=canvas.height=512;const c=canvas.getContext('2d')!,g=c.createRadialGradient(256,215,0,256,256,362);
+  g.addColorStop(0,'#142231');g.addColorStop(.48,'#0a1119');g.addColorStop(1,'#05080c');c.fillStyle=g;c.fillRect(0,0,512,512);
+  const texture=new T.CanvasTexture(canvas);texture.colorSpace=T.SRGBColorSpace;return texture;
+}
 export class MathsView {
   readonly renderer=new T.WebGLRenderer({antialias:true,preserveDrawingBuffer:true});
   readonly scene=new T.Scene();readonly camera=new T.PerspectiveCamera(42,1,.1,100);
@@ -10,7 +16,7 @@ export class MathsView {
   private resize:ResizeObserver;private state:LessonState|null=null;private demo=false;
   private labels=[document.createElement('span'),document.createElement('span')];
   constructor(readonly host:HTMLElement,readonly flat:HTMLCanvasElement){
-    this.scene.background=new T.Color('#f5f7ef');this.scene.add(this.content);
+    this.scene.background=stageBackground();this.scene.add(this.content);
     this.renderer.setPixelRatio(Math.min(devicePixelRatio,2));host.prepend(this.renderer.domElement);
     this.labels.forEach((label,i)=>{label.className='demo-point-label '+(i?'projected':'original');label.hidden=true;host.append(label);});
     this.resize=new ResizeObserver(()=>{const r=host.getBoundingClientRect();this.renderer.setSize(r.width,r.height);this.camera.aspect=r.width/Math.max(1,r.height);this.camera.updateProjectionMatrix();this.drawFlat();});
@@ -38,7 +44,7 @@ export class MathsView {
     this.camera.position.set(v.x+r*Math.cos(v.pitch)*Math.sin(v.yaw),v.y+r*Math.sin(v.pitch),r*Math.cos(v.pitch)*Math.cos(v.yaw));this.camera.lookAt(v.x,v.y,0);
     const signature=JSON.stringify([s.stage,s.q,s.selected,s.reveal,s.residuals,s.annotations,demo]);
     if(signature!==this.signature){this.signature=signature;this.clear();const origin=centre(s.stage),points=dataset(s.stage),{u,v}=basis(s.q);
-      this.plane(origin,s.q,colours.plane,.13);
+      this.plane(origin,s.q,colours.plane,.16);
       this.line([new T.Vector3(...origin).addScaledVector(u,-4.5).toArray() as Vec3,new T.Vector3(...origin).addScaledVector(u,4.5).toArray() as Vec3],0xa8bbae,.5);
       this.line([new T.Vector3(...origin).addScaledVector(v,-4.5).toArray() as Vec3,new T.Vector3(...origin).addScaledVector(v,4.5).toArray() as Vec3],0xa8bbae,.5);
       if(s.reveal&&s.stage!=='point')this.plane(origin,pca(points).q,colours.pca,.09);
@@ -53,7 +59,7 @@ export class MathsView {
           if(Math.abs(distance)>.1){const foot=new T.Vector3(...projected),up=n.multiplyScalar(Math.sign(distance)*.24),across=u.clone().multiplyScalar(.24);this.line([foot.clone().add(up).toArray() as Vec3,foot.clone().add(up).add(across).toArray() as Vec3,foot.clone().add(across).toArray() as Vec3],colours.selected);}
         }
       });
-      for(const note of s.annotations)if(note.points.length>1)this.line(note.points.map(p=>annotationPoint(p,note.frame)),0x2a60b0);
+      for(const note of s.annotations)if(note.points.length>1)this.line(note.points.map(p=>annotationPoint(p,note.frame)),colours.ink);
       this.drawFlat();
     }
     this.renderer.render(this.scene,this.camera);
@@ -67,14 +73,14 @@ export class MathsView {
     const s=this.state;if(!s)return;const r=this.flat.getBoundingClientRect();if(r.width<1)return;
     const dpr=Math.min(devicePixelRatio,2);this.flat.width=r.width*dpr;this.flat.height=r.height*dpr;
     const c=this.flat.getContext('2d')!;c.scale(dpr,dpr);const w=r.width,h=r.height,scale=Math.min(w,h)/11;
-    c.fillStyle='#fffef9';c.fillRect(0,0,w,h);c.strokeStyle='#e8ece3';c.lineWidth=1;
+    c.fillStyle='#0b131b';c.fillRect(0,0,w,h);c.strokeStyle='rgba(255,255,255,.07)';c.lineWidth=1;
     for(let i=-5;i<=5;i++){c.beginPath();c.moveTo(w/2+i*scale,0);c.lineTo(w/2+i*scale,h);c.moveTo(0,h/2+i*scale);c.lineTo(w,h/2+i*scale);c.stroke();}
-    c.strokeStyle='#a4b9a8';c.beginPath();c.moveTo(0,h/2);c.lineTo(w,h/2);c.moveTo(w/2,0);c.lineTo(w/2,h);c.stroke();
-    c.font='12px "DM Sans", sans-serif';c.fillStyle='#52695c';c.fillText('coordinate 1',w-88,h/2-9);c.fillText('coordinate 2',w/2+8,18);c.fillText('0',w/2+6,h/2+15);
-    dataset(s.stage).forEach((p,i)=>{const {z}=project(p,centre(s.stage),s.q);c.beginPath();c.arc(w/2+z[0]*scale,h/2-z[1]*scale,i===s.selected?6:4,0,Math.PI*2);c.fillStyle=i===s.selected&&!this.demo?'#a84169':'#c28229';c.fill();});
+    c.strokeStyle='rgba(238,243,242,.38)';c.beginPath();c.moveTo(0,h/2);c.lineTo(w,h/2);c.moveTo(w/2,0);c.lineTo(w/2,h);c.stroke();
+    c.font='12px "DM Sans", sans-serif';c.fillStyle='rgba(238,243,242,.66)';c.fillText('coordinate 1',w-88,h/2-9);c.fillText('coordinate 2',w/2+8,18);c.fillText('0',w/2+6,h/2+15);
+    dataset(s.stage).forEach((p,i)=>{const {z}=project(p,centre(s.stage),s.q);c.beginPath();c.arc(w/2+z[0]*scale,h/2-z[1]*scale,i===s.selected?6:4,0,Math.PI*2);c.fillStyle=i===s.selected&&!this.demo?'#ff6fa3':'#ffc861';c.fill();});
     // Only show ink in this flat view when it belongs to the current plane/basis.
     for(const note of s.annotations){if(Math.abs(new T.Quaternion().fromArray(note.frame.q).dot(new T.Quaternion().fromArray(s.q)))<.99999)continue;
-      c.beginPath();for(let i=0;i<note.points.length;i++){const p=note.points[i],x=w/2+p[0]*9*scale,y=h/2-p[1]*9/note.frame.aspect*scale;i?c.lineTo(x,y):c.moveTo(x,y);}c.strokeStyle='#2a60b0';c.lineWidth=2;c.stroke();}
+      c.beginPath();for(let i=0;i<note.points.length;i++){const p=note.points[i],x=w/2+p[0]*9*scale,y=h/2-p[1]*9/note.frame.aspect*scale;i?c.lineTo(x,y):c.moveTo(x,y);}c.strokeStyle='#7fb2ff';c.lineWidth=2;c.stroke();}
   }
   pick(clientX:number,clientY:number):number|null {
     const r=this.host.getBoundingClientRect(),ray=new T.Raycaster();ray.setFromCamera(new T.Vector2((clientX-r.x)/r.width*2-1,1-(clientY-r.y)/r.height*2),this.camera);

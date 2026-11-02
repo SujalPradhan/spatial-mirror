@@ -13,8 +13,8 @@ export const atpPhonePanel=`<section id="atp-phone-panel" hidden aria-label="ATP
 export function updateAtpPhone(state:Packet|null,enabled:boolean,fine:boolean,hold:boolean){
  const panel=document.querySelector<HTMLElement>('#atp-phone-panel')!;panel.hidden=state?.workspace!=='atp';if(panel.hidden)return;
  const rotor=state!.tool==='rotor',input=document.querySelector<HTMLInputElement>('#fine')!;
- document.querySelector('#pad-label')!.textContent=rotor?'Hold to turn the rotor':'Hold to turn the view';
- document.querySelector('#fine-label')!.textContent=rotor?'Rotor angle':'Zoom';input.min=rotor?'0':'.65';input.max=rotor?'360':'2.5';input.step=rotor?'1':'.01';input.disabled=!enabled||hold;
+ document.querySelector('#pad-label')!.textContent=rotor?`Hold to turn the ${state!.motionLabel??'rotor'}`:'Hold to turn the view';
+ document.querySelector('#fine-label')!.textContent=rotor?`${String(state!.motionLabel??'rotor').replace(/^./,c=>c.toUpperCase())} angle`:'Zoom';input.min=rotor?'0':'.65';input.max=rotor?'360':'2.5';input.step=rotor?'1':'.01';input.disabled=!enabled||hold;
  if(!fine)input.value=String(rotor?state!.phase:state!.zoom??1);
  document.querySelector('#fine-value')!.textContent=rotor?`${Math.round(Number(input.value))}°`:`${Number(input.value).toFixed(2)}×`;
  for(const button of panel.querySelectorAll<HTMLButtonElement>('[data-action]')){

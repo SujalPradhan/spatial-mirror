@@ -1,0 +1,63 @@
+:where(.mirror-page){--mirror-accent:#ffc861;--mirror-accent-rgb:255,200,97}
+.mirror-page{--mirror-ink:#eef3f2;--mirror-dim:rgba(238,243,242,.58);position:relative;height:100svh;display:flex;flex-direction:column;overflow:hidden;background:#05080c;color:var(--mirror-ink);font-family:'DM Sans',system-ui,sans-serif;isolation:isolate}
+.mirror-page *{box-sizing:border-box}
+.mirror-page button{font:inherit;color:inherit;cursor:pointer}
+.mirror-page button:focus-visible,.mirror-page a:focus-visible{outline:2px solid var(--mirror-accent);outline-offset:3px}
+.mirror-page [hidden]{display:none!important}
+.mirror-page .workspace-nav{position:relative;z-index:6;flex:none;max-width:none;padding:6px 20px;gap:2px;background:rgba(5,8,12,.55);border-bottom:1px solid rgba(255,255,255,.07);backdrop-filter:blur(10px)}
+.mirror-page .workspace-nav a,.mirror-page .workspace-nav button{font-size:11px;padding:6px 10px;color:var(--mirror-dim);border-radius:4px;background:none;border-color:transparent}
+.mirror-page .workspace-nav a:hover,.mirror-page .workspace-nav button:hover{background:rgba(255,255,255,.08);color:var(--mirror-ink)}
+.mirror-page .workspace-nav [aria-current=page]{background:rgba(255,255,255,.12);color:var(--mirror-ink)}
+.mirror-page .hosted-preview{display:none}
+.mirror-stage{position:relative;flex:1;min-height:0;overflow:hidden;background:radial-gradient(ellipse at 50% 42%,#142231 0%,#0a1119 48%,#05080c 100%)}
+.mirror-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1);opacity:0;filter:brightness(.5) saturate(.55) contrast(1.05);transition:opacity .9s}
+.is-live .mirror-video{opacity:1}
+/* A vignette keeps the glowing object legible against any room. */
+.mirror-stage:after{content:'';position:absolute;inset:0;z-index:1;pointer-events:none;background:radial-gradient(ellipse at center,rgba(5,8,12,.12) 30%,rgba(5,8,12,.72) 100%)}
+.mirror-viewport{position:absolute;inset:0;z-index:2;outline:none;touch-action:none;cursor:grab;overflow:hidden}
+.mirror-viewport:active{cursor:grabbing}
+.mirror-canvas{display:block;width:100%;height:100%;position:absolute;inset:0}
+.mirror-hand-overlay{display:none}
+.mirror-mark{position:absolute;z-index:3;left:24px;top:18px;margin:0;pointer-events:none;font:600 15px/1 'Manrope',system-ui,sans-serif;letter-spacing:-.02em}
+.mirror-mark span{font-weight:400;color:var(--mirror-dim)}
+.mirror-count{position:absolute;z-index:3;right:24px;top:12px;margin:0;pointer-events:none;font-size:11px;letter-spacing:.08em;color:var(--mirror-dim)}
+.mirror-count output{font:600 27px/1 'Manrope',system-ui,sans-serif;letter-spacing:-.03em;color:var(--mirror-accent);font-variant-numeric:tabular-nums}
+.mirror-enter{position:absolute;z-index:4;left:24px;bottom:20px;padding:12px 22px;border:1px solid rgba(var(--mirror-accent-rgb),.55);border-radius:99px;background:rgba(var(--mirror-accent-rgb),.14);font-size:14px;backdrop-filter:blur(10px);transition:background .2s}
+.mirror-enter:hover{background:rgba(var(--mirror-accent-rgb),.28)}
+.is-live .mirror-enter{left:24px;bottom:auto;top:46px;transform:none;padding:5px 11px;border-color:rgba(255,255,255,.14);background:none;font-size:10px;color:var(--mirror-dim)}
+.mirror-gestures{position:absolute;z-index:3;left:50%;bottom:22px;transform:translateX(-50%);display:flex;gap:2px;margin:0;padding:0;list-style:none;pointer-events:none;opacity:.62;transition:opacity .4s}
+.has-hands .mirror-gestures{opacity:1}
+.mirror-gestures li{display:flex;flex-direction:column;align-items:center;gap:3px;min-width:54px;padding:5px 4px;border-radius:7px;font-size:9px;letter-spacing:.03em;color:var(--mirror-dim);transition:background .15s,color .15s}
+.mirror-gestures i{font-style:normal;font-size:17px;line-height:1.2;filter:grayscale(1) opacity(.7);white-space:nowrap}
+.mirror-gestures .is-on{background:rgba(var(--mirror-accent-rgb),.2);color:var(--mirror-ink)}
+.mirror-gestures .is-on i{filter:none}
+.mirror-status{position:absolute;z-index:3;left:50%;bottom:84px;transform:translateX(-50%);margin:0;pointer-events:none;max-width:60%;text-align:center;font-size:11px;color:var(--mirror-dim)}
+.mirror-corner{position:absolute;z-index:4;right:18px;bottom:20px;display:flex;gap:2px}
+.mirror-corner button{padding:6px 9px;border:0;border-radius:5px;background:none;font-size:10px;color:var(--mirror-dim)}
+.mirror-corner button:hover{background:rgba(255,255,255,.1);color:var(--mirror-ink)}
+.mirror-sound[aria-pressed=false]{text-decoration:line-through}
+.mirror-corner button.mirror-freeze{color:var(--mirror-accent)}
+.mirror-chip{position:absolute;z-index:3;pointer-events:none;padding:6px 10px;border-left:2px solid var(--mirror-accent);border-radius:0 5px 5px 0;background:rgba(5,8,12,.68);backdrop-filter:blur(8px);white-space:nowrap}
+.mirror-chip b{display:block;font:600 13px/1.3 'Manrope',system-ui,sans-serif}
+.mirror-chip small{display:block;font-size:10px;line-height:1.5;color:var(--mirror-dim)}
+.mirror-loading{position:absolute;z-index:10;inset:0;display:grid;place-content:center;gap:12px;text-align:center;background:#05080c;color:var(--mirror-dim);font-size:13px;padding:25px}
+.mirror-loading:before{content:'';width:25px;height:25px;border:2px solid rgba(255,255,255,.15);border-top-color:var(--mirror-accent);border-radius:50%;margin:0 auto 6px;animation:mirror-spin .9s linear infinite}
+.mirror-loading.mirror-error:before{display:none}
+@keyframes mirror-spin{to{transform:rotate(360deg)}}
+.mirror-page .mirror-about{max-width:560px;width:calc(100% - 32px);max-height:85svh;padding:26px;border:1px solid rgba(255,255,255,.14);border-radius:10px;background:#0d151e;color:var(--mirror-ink)}
+.mirror-page .mirror-about::backdrop{background:rgba(5,8,12,.6);backdrop-filter:blur(5px)}
+.mirror-page .mirror-about h2{font:500 22px/1.2 'Manrope',system-ui,sans-serif;letter-spacing:-.03em;margin:0 0 14px}
+.mirror-page .mirror-about p,.mirror-page .mirror-about li{font-size:12.5px;line-height:1.7;color:var(--mirror-dim)}
+.mirror-page .mirror-about a{color:var(--mirror-accent);text-underline-offset:3px}
+.mirror-page .mirror-about button{margin-top:10px;padding:8px 14px;border:1px solid rgba(255,255,255,.2);border-radius:5px;background:none;font-size:12px}
+@media(max-width:900px){.mirror-gestures{left:12px;right:12px;transform:none;flex-wrap:wrap;justify-content:center}.mirror-gestures li{min-width:46px}.mirror-corner{top:48px;right:12px;bottom:auto}.mirror-enter{left:50%;bottom:150px;transform:translateX(-50%)}.is-live .mirror-enter{transform:none}.mirror-status{bottom:142px;max-width:90%}}
+@media(prefers-reduced-motion:reduce){.mirror-page *{transition:none!important}.mirror-loading:before{animation:none}}
+.mirror-tutorial{position:absolute;z-index:5;left:50%;top:56px;transform:translateX(-50%);display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:4px 12px;min-width:250px;padding:10px 12px;border:1px solid rgba(255,255,255,.1);border-radius:10px;background:rgba(5,8,12,.74);backdrop-filter:blur(10px)}
+.mirror-tutorial i{font-style:normal;font-size:26px;line-height:1}
+.mirror-tutorial p{margin:0}
+.mirror-tutorial b{display:block;font:600 14px/1.3 'Manrope',system-ui,sans-serif}
+.mirror-tutorial small{display:block;font-size:10px;line-height:1.5;color:var(--mirror-dim)}
+.mirror-tutorial>button{padding:6px 9px;border:0;border-radius:5px;background:none;font-size:10px;color:var(--mirror-dim)}
+.mirror-tutorial>button:hover{background:rgba(255,255,255,.1);color:var(--mirror-ink)}
+.mirror-tutorial-bar{grid-column:1/-1;height:2px;border-radius:2px;background:rgba(255,255,255,.12);overflow:hidden}
+.mirror-tutorial-bar span{display:block;width:0;height:100%;background:var(--mirror-accent)}

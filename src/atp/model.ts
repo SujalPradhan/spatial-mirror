@@ -4,7 +4,7 @@ import type {AtpState,AtpViewState} from './contracts';
 const quarterTurn=-.45;
 export const homeView=():AtpViewState=>({q:[0,Math.sin(quarterTurn/2),0,Math.cos(quarterTurn/2)],zoom:1,x:0,y:0});
 export function initialAtp():AtpState {return {schema:2,tool:'view',phase:0,view:homeView(),frozen:false};}
-export function clampPhase(value:number):number {return Number.isFinite(value)?Math.max(0,Math.min(360,value)):0;}
+export {clampPhase} from '../mirror/contracts';
 
 const record=(value:unknown):value is Record<string,unknown>=>typeof value==='object'&&value!==null&&!Array.isArray(value);
 const bounded=(value:unknown,min:number,max:number):value is number=>typeof value==='number'&&Number.isFinite(value)&&value>=min&&value<=max;

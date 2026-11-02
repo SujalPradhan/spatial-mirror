@@ -1,14 +1,8 @@
 import * as T from 'three';
 import type {AtpComponent, AtpField, AtpHandView, AtpScene, AtpSkin, AtpStructureAsset, AtpViewState, AtpWorld, HandPose, HandSide, MirrorPoint, WorldPoint} from './contracts';
+import {mirrorToStage} from '../mirror/projection';
 
-/** Where a mirror-space video point lands on an object-fit:cover stage, in 0..1 stage coords. */
-export function mirrorToStage(x: number, y: number, videoAspect: number, stageAspect: number) {
-  const video = videoAspect > 0 && Number.isFinite(videoAspect) ? videoAspect : stageAspect;
-  // Cover crops the long axis symmetrically, so only the cropped axis stretches about its centre.
-  return video > stageAspect
-    ? {x: (x - .5) * video / stageAspect + .5, y}
-    : {x, y: (y - .5) * stageAspect / video + .5};
-}
+export {mirrorToStage};
 
 const GAP = 5.2, MOLECULE_HEIGHT = 5.8, FADE_SECONDS = .3, PICK_RADIUS = .45, PICK_STRIDE = 6;
 const BEAD_SIZE = .082, HALO_SIZE = .34, HALO_STRIDE = 6, TUBE_RADIUS = .052, TUBE_STEPS = 3, TUBE_SIDES = 6;
@@ -292,17 +286,17 @@ interface Chain {
   /** Coarse model-space CA sample for picking. */
   samples: Float32Array;
   centroid: T.Vector3; radial: T.Vector3; hinge: T.Vector3; out: number; lift: number; tilt: number;
-  glow: {value: number};
+  glow: {value: number}; tint: {value: T.Color}; color: T.Color; marker: boolean;
 }
 const v = new T.Vector3(), w = new T.Vector3(), rootInverse = new T.Quaternion(), rotorInverse = new T.Quaternion();
-const Y = new T.Vector3(0, 1, 0), mix = new T.Color(), protonColor = new T.Color('#b8f6ff');
+const Y = new T.Vector3(0, 1, 0), mix = new T.Color(), protonColor = new T.Color('#b8f6ff'), rotorColor = new T.Color('#ffd27a');
 
 export class AtpView implements AtpWorld {
   readonly ready: Promise<void>;
   readonly scene = new T.Scene();
   readonly camera = new T.PerspectiveCamera(37, 1, .1, 100);
   readonly renderer: T.WebGLRenderer;
-  chainCount = 0;
+  partCount = 0;
   private readonly root = new T.Group();
   private readonly rotor = new T.Group();
   private readonly chains: Chain[] = [];
@@ -349,7 +343,7 @@ export class AtpView implements AtpWorld {
     this.renderer = new T.WebGLRenderer({antialias: true, alpha: true, powerPreference: 'high-performance'});
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
     this.renderer.setClearColor(0, 0);
-    this.renderer.domElement.className = 'atp-canvas';
+    this.renderer.domElement.className = 'atp-canvas mirror-canvas';
     this.renderer.domElement.setAttribute('aria-hidden', 'true');
     host.prepend(this.renderer.domElement);
     this.camera.position.set(0, 0, 13);
@@ -370,7 +364,7 @@ export class AtpView implements AtpWorld {
     this.scene.add(this.atp, this.protons.mesh, this.hands.mesh, this.plane);
     this.buildMembrane();
 
-    this.chip.className = 'atp-chip'; this.chip.hidden = true;
+    this.chip.className = 'atp-chip mirror-chip'; this.chip.hidden = true;
     this.chip.append(this.chipTitle, this.chipDetail);
     host.append(this.chip);
 
@@ -385,7 +379,7 @@ export class AtpView implements AtpWorld {
   private readonly onContextLost = (event: Event) => {
     event.preventDefault();
     this.contextLost = true;
-    this.host.dispatchEvent(new CustomEvent('atp-render-error', {bubbles: true, detail: 'The 3D view paused. Reload if it does not recover.'}));
+    this.host.dispatchEvent(new CustomEvent('mirror-render-error', {bubbles: true, detail: 'The 3D view paused. Reload if it does not recover.'}));
   };
   private readonly onContextRestored = () => {this.contextLost = false; this.renderer.render(this.scene, this.camera);};
 
@@ -440,7 +434,7 @@ export class AtpView implements AtpWorld {
     const coords = asset.chains.map(chain => Float32Array.from(chain.points, (n, i) => i % 3 === 1 ? (n - midY) * scale : n * scale));
     const shades = burial(coords, 11 * scale);
     asset.chains.forEach((chain, i) => this.buildChain(chain, coords[i], shades[i], GAP * scale, i));
-    this.chainCount = this.chains.length;
+    this.partCount = this.chains.length;
     if (!this.contextLost) this.renderer.render(this.scene, this.camera);
   }
 
@@ -514,6 +508,7 @@ export class AtpView implements AtpWorld {
     this.chains.push({
       id: source.id, name: source.name, component: source.component, residues: count, group, rotor: source.component === 'rotor',
       samples, centroid, radial, hinge: new T.Vector3().crossVectors(Y, radial), out: style.out, lift: style.lift, tilt: style.tilt, glow: chainGlow,
+      tint, color: new T.Color(style.color), marker: /subunit c/i.test(source.name) && !this.chains.some(c => c.marker),
     });
   }
 
@@ -565,7 +560,7 @@ export class AtpView implements AtpWorld {
     return {x: c.x + v.x * t, y: c.y + v.y * t, z};
   }
 
-  chainAt(point: WorldPoint) {
+  partAt(point: WorldPoint) {
     const c = this.camera.position;
     v.set(point.x - c.x, point.y - c.y, point.z - c.z);
     const reach = v.length();
@@ -592,7 +587,7 @@ export class AtpView implements AtpWorld {
     return best;
   }
 
-  chainInfo(index: number) {
+  partInfo(index: number) {
     const chain = this.chains[index];
     return chain ? {id: chain.id, name: chain.name, component: chain.component, residues: chain.residues} : {id: '', name: '', component: 'head' as AtpComponent, residues: 0};
   }
@@ -658,11 +653,13 @@ export class AtpView implements AtpWorld {
   }
 
   private updateChains(scene: AtpScene) {
-    const e = Math.max(0, Math.min(1, scene.explode)), offsets = scene.chainOffsets, glows = scene.chainGlow;
+    const e = Math.max(0, Math.min(1, scene.explode)), offsets = scene.partOffsets, glows = scene.partGlow;
     this.explode = e;
     this.rotor.rotation.y = scene.rotorAngle;
     rootInverse.copy(this.root.quaternion).invert();
     rotorInverse.setFromAxisAngle(Y, -scene.rotorAngle);
+    // The c ring is symmetric, so one lit blade is what makes its turning visible.
+    const speed = Math.abs(scene.rotorSpeed), running = Math.min(1, speed / .2) * (.4 + .6 * Math.min(1, speed / 1.5));
     for (let i = 0; i < this.chains.length; i++) {
       const c = this.chains[i], o = i * 3;
       // Tilting about the chain's own centroid opens it like a petal instead of swinging it round the axis.
@@ -675,7 +672,9 @@ export class AtpView implements AtpWorld {
         if (c.rotor) v.applyQuaternion(rotorInverse);
         c.group.position.add(v);
       }
-      c.glow.value = i < glows.length ? glows[i] : 0;
+      c.glow.value = Math.max(i < glows.length ? glows[i] : 0, c.marker ? running * .9 : 0);
+      if (c.rotor) c.tint.value.copy(c.color).lerp(rotorColor, running * .7);
+      else c.tint.value.copy(c.color).multiplyScalar(1 - running * .55);
     }
     this.root.updateMatrixWorld(true);
   }

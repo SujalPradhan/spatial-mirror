@@ -1,0 +1,14 @@
+/* The ATP look for workspaces that keep their own controls. Add .mirror-workspace to the page root, .mirror-workspace-stage to the 3D host, and .mirror-drawer to the controls. */
+.mirror-workspace{--mirror-ink:#eef3f2;--mirror-dim:rgba(238,243,242,.58);--mirror-accent:#ffc861;--mirror-line:rgba(255,255,255,.1);--mirror-panel:rgba(9,14,20,.82);--line:var(--mirror-line);position:relative;min-height:100svh;background:#05080c;color:var(--mirror-ink);font-family:'DM Sans',system-ui,sans-serif}
+.mirror-workspace-stage{background:radial-gradient(ellipse at 50% 42%,#142231 0%,#0a1119 48%,#05080c 100%)}
+.mirror-workspace .workspace-nav{max-width:none;padding:6px 20px;gap:2px;background:rgba(5,8,12,.55);border-bottom:1px solid rgba(255,255,255,.07);backdrop-filter:blur(10px)}
+.mirror-workspace .workspace-nav a,.mirror-workspace .workspace-nav button{font-size:11px;padding:6px 10px;color:var(--mirror-dim);border-radius:4px;background:none;border-color:transparent}
+.mirror-workspace .workspace-nav a:hover,.mirror-workspace .workspace-nav button:hover{background:rgba(255,255,255,.08);color:var(--mirror-ink)}
+.mirror-workspace .workspace-nav [aria-current=page],.mirror-workspace .workspace-nav .active{background:rgba(255,255,255,.12);color:var(--mirror-ink);font-weight:400}
+.mirror-workspace .topbar{background:rgba(5,8,12,.55);border-color:rgba(255,255,255,.07);color:var(--mirror-ink)}
+.mirror-workspace .brand{color:var(--mirror-ink)}
+.mirror-drawer{background:var(--mirror-panel);color:var(--mirror-ink);border:1px solid var(--mirror-line);border-radius:10px;backdrop-filter:blur(12px)}
+.mirror-drawer h2,.mirror-drawer h3,.mirror-drawer label,.mirror-drawer p,.mirror-drawer small,.mirror-drawer output{color:inherit}
+.mirror-workspace button:focus-visible,.mirror-workspace a:focus-visible{outline:2px solid var(--mirror-accent);outline-offset:3px}
+.mirror-workspace input,.mirror-workspace select,.mirror-workspace textarea{color-scheme:dark;accent-color:var(--mirror-accent)}
+body:has(.mirror-workspace) .hosted-preview{background:#0a1119;color:var(--mirror-dim,rgba(238,243,242,.58));border-color:rgba(255,255,255,.07)}

@@ -15,7 +15,7 @@ try{
   assert.equal(await page.locator('.workspace-nav [aria-current="page"]').innerText(),'Maths');
   assert.equal(await page.locator('#reveal').isVisible(),false);assert.equal(await page.locator('#error-value').innerText(),'4.000');
   const {token}=await fetch(base+'/api/session').then(r=>r.json());await phone.goto(base+'/phone?session='+token);
-  await phone.waitForFunction(()=>document.querySelector('#workspace-title').textContent==='Spatial Maths');await clickPhone('#start');await phone.waitForFunction(()=>!document.querySelector('#clutch').disabled);await phone.evaluate(()=>window.instanceId='same phone page');
+  await phone.waitForFunction(()=>document.querySelector('#workspace-title')?.textContent==='Spatial Maths');await clickPhone('#start');await phone.waitForFunction(()=>!document.querySelector('#clutch').disabled);await phone.evaluate(()=>window.instanceId='same phone page');
   await hold();await page.waitForFunction(()=>window.__mathsStudio.holding);await phone.evaluate(()=>window.testDegrees=35);
   await page.waitForFunction(()=>Math.abs(window.__mathsStudio.error-4)>.1);await phone.mouse.up();await page.waitForFunction(()=>!window.__mathsStudio.holding);
   const released=await page.evaluate(()=>window.__mathsStudio.state.q);await phone.evaluate(()=>window.testDegrees=75);await phone.waitForTimeout(180);assert.deepEqual(await page.evaluate(()=>window.__mathsStudio.state.q),released);

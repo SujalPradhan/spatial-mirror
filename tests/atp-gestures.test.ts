@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Quaternion,Vector3} from 'three';
-import {GestureTracker,classifyPose,palmOrientation,sideFromLabel} from '../src/atp/gestures';
+import {GestureTracker,classifyPose,palmOrientation,sideFromLabel} from '../src/mirror/gestures';
 import realHands from './real-hands.json' with {type:'json'};
 import type {Landmark} from '../src/fist';
 import {imageHand,imagePose,metricHand,posedHand,type PoseName} from './hand-fixtures';
@@ -94,4 +94,25 @@ for(const hand of realHands)test(`real ${hand.source} reads as ${hand.pose} on l
 test('a single unclear frame does not drop a held gesture',()=>{
  const t=new GestureTracker(),fist=imagePose('fist'),world=posedHand('fist');let f;for(let i=0;i<6;i++)f=t.update([fist],i*30,[world]);assert.equal(f!.hands[0].pose,'fist');
  const unclear=posedHand('open').map((p,i)=>i%4===0?{...p,y:p.y*.4}:{...p,x:p.x*.5});for(let i=6;i<9;i++)f=t.update([imagePose('open')],i*30,[unclear]);assert.equal(f!.hands[0].pose,'fist');
+});
+
+test('a thumbs up held through a lean does not drop into a fist',()=>{
+ const sample=(realHands as unknown as {pose:string;image:Landmark[]}[]).find(s=>s.pose==='thumbUp')!;
+ // Rotating about the camera axis leans the whole hand the way a tired wrist does.
+ const lean=(deg:number)=>{const a=deg*Math.PI/180,c=sample.image[0],k=Math.cos(a),n=Math.sin(a);return sample.image.map(p=>({x:c.x+(p.x-c.x)*k-(p.y-c.y)*n,y:c.y+(p.x-c.x)*n+(p.y-c.y)*k,z:p.z}));};
+ const angle=[...Array(90).keys()].find(deg=>classifyPose(lean(deg))!=='thumbUp'&&classifyPose(lean(deg),undefined,true)==='thumbUp');
+ assert.ok(angle!==undefined,'some lean is only held by the hysteresis');
+ const tracker=new GestureTracker();let at=0,frame=tracker.update([sample.image],at);
+ for(;at<300;at+=33)frame=tracker.update([sample.image],at);
+ assert.equal(frame.hands[0].pose,'thumbUp');
+ for(const held=at+600;at<held;at+=33)frame=tracker.update([lean(angle!)],at);
+ assert.equal(frame.hands[0].pose,'thumbUp');
+});
+
+test('closing a thumbs up into a fist still becomes Hold',()=>{
+ const tracker=new GestureTracker();let at=0,frame=tracker.update([posedHand('thumbUp')],at);
+ for(;at<300;at+=33)frame=tracker.update([posedHand('thumbUp')],at);
+ assert.equal(frame.hands[0].pose,'thumbUp');
+ for(const held=at+400;at<held;at+=33)frame=tracker.update([posedHand('fist')],at);
+ assert.equal(frame.hands[0].pose,'fist');
 });

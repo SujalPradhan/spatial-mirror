@@ -10,8 +10,8 @@ const count=(sounds:{type:string}[],type:string)=>sounds.filter(s=>s.type===type
 const axisQ=(degrees:number,axis=new Vector3(0,1,0))=>new Quaternion().setFromAxisAngle(axis,degrees*Math.PI/180).toArray() as Quat;
 const turned=(a:Quat,b:Quat)=>new Quaternion().fromArray(a).angleTo(new Quaternion().fromArray(b))*180/Math.PI;
 function world(chain:(p:{x:number;y:number})=>number=()=>2){
- const w:AtpWorld&{picks:number}={picks:0,chainCount:22,mirrorToWorld:(p:MirrorPoint)=>({x:(p.x-.5)*10,y:(.5-p.y)*10,z:0}),chainAt(p){w.picks++;return chain(p);},
-  chainInfo:i=>({id:'F',name:i===2?'ATP synthase subunit beta':'ATP synthase subunit c',component:'head',residues:458}),headPoint:()=>({x:0,y:2,z:0})};
+ const w:AtpWorld&{picks:number}={picks:0,partCount:22,mirrorToWorld:(p:MirrorPoint)=>({x:(p.x-.5)*10,y:(.5-p.y)*10,z:0}),partAt(p){w.picks++;return chain(p);},
+  partInfo:i=>({id:'F',name:i===2?'ATP synthase subunit beta':'ATP synthase subunit c',component:'head',residues:458}),headPoint:()=>({x:0,y:2,z:0})};
  return w;
 }
 function hand(id:number,pose:HandPose,x=.3,y=.5,orientation:Quat|null=null,poseAge=5):TrackedHand{
@@ -75,24 +75,24 @@ test('pinch plucks with a soft limit, then the chain wobbles home',()=>{
  const r=rig();let out=r.run([hand(1,'pinch',.5,.5)]);
  assert.equal(count(out.sounds,'pluck'),1);
  out=r.idle(.4,[hand(1,'pinch',.6,.5)]);
- assert.ok(Math.abs(out.scene.chainOffsets[6]-1)<.01);assert.equal(out.scene.chainGlow[2],1);
+ assert.ok(Math.abs(out.scene.partOffsets[6]-1)<.01);assert.equal(out.scene.partGlow[2],1);
  out=r.idle(.4,[hand(1,'pinch',1.5,.5)]);
- const stretched=out.scene.chainOffsets[6];assert.ok(stretched>3&&stretched<4.5);
- out=r.idle(.4,[hand(1,'pinch',.6,.5)]);const start=out.scene.chainOffsets[6];
+ const stretched=out.scene.partOffsets[6];assert.ok(stretched>3&&stretched<4.5);
+ out=r.idle(.4,[hand(1,'pinch',.6,.5)]);const start=out.scene.partOffsets[6];
  const released=r.run([]);assert.equal(count(released.sounds,'snap'),1);
- assert.notEqual(released.scene.chainOffsets[9],0,'neighbour jolts');
+ assert.notEqual(released.scene.partOffsets[9],0,'neighbour jolts');
  let crossings=0,was=Math.sign(start),peak=0,t=DT;
  const empty:GestureFrame={at:-1,hands:[],events:[]};
- for(;t<.9;t+=DT){const x=r.engine.step(empty,DT,r.view,false).scene.chainOffsets[6],s=Math.sign(x);if(s&&s!==was){crossings++;was=s;}if(t>.25)peak=Math.max(peak,Math.abs(x));}
+ for(;t<.9;t+=DT){const x=r.engine.step(empty,DT,r.view,false).scene.partOffsets[6],s=Math.sign(x);if(s&&s!==was){crossings++;was=s;}if(t>.25)peak=Math.max(peak,Math.abs(x));}
  assert.ok(crossings>=3,`underdamped, got ${crossings}`);assert.ok(peak>.02,'still visibly wobbling');
  for(;t<1.6;t+=DT)r.engine.step(empty,DT,r.view,false);
- assert.ok(Math.abs(r.engine.step(empty,DT,r.view,false).scene.chainOffsets[6])<.03);
+ assert.ok(Math.abs(r.engine.step(empty,DT,r.view,false).scene.partOffsets[6])<.03);
 });
 test('pinching empty space does nothing, mouse plucks and reports the grab',()=>{
  const r=rig(()=>-1);assert.equal(count(r.run([hand(1,'pinch')]).sounds,'pluck'),0);
  assert.equal(r.engine.pointerDown({x:0,y:0,z:0}),false);
  const m=rig();assert.equal(m.engine.pointerDown({x:0,y:0,z:0}),true);m.engine.pointerMove({x:1,y:0,z:0});
- const out=m.idle(.3);assert.ok(Math.abs(out.scene.chainOffsets[6]-1)<.01);
+ const out=m.idle(.3);assert.ok(Math.abs(out.scene.partOffsets[6]-1)<.01);
  m.engine.pointerUp();assert.equal(count(m.run([]).sounds,'snap'),1);
 });
 test('stirring spins a coasting flywheel, a still finger only hovers',()=>{
@@ -174,9 +174,9 @@ test('two-hand pinch tears apart then returns to rest',()=>{
 test('clap sends a shock through every chain, springs return, shock expires',()=>{
  const r=rig();let out=r.run([],[{type:'clap',x:.3,y:.5}]);
  assert.equal(out.scene.shocks.length,1);assert.equal(count(out.sounds,'shock'),1);
- out=r.run([]);let moved=0;for(let i=0;i<22;i++)if(Math.hypot(out.scene.chainOffsets[i*3],out.scene.chainOffsets[i*3+1],out.scene.chainOffsets[i*3+2])>.01)moved++;
+ out=r.run([]);let moved=0;for(let i=0;i<22;i++)if(Math.hypot(out.scene.partOffsets[i*3],out.scene.partOffsets[i*3+1],out.scene.partOffsets[i*3+2])>.01)moved++;
  assert.equal(moved,22);
- out=r.idle(1.8);assert.equal(out.scene.shocks.length,0);assert.ok(Math.max(...out.scene.chainOffsets)<.05);
+ out=r.idle(1.8);assert.equal(out.scene.shocks.length,0);assert.ok(Math.max(...out.scene.partOffsets)<.05);
 });
 test('love steps the skin once per gesture',()=>{
  const r=rig(),love:GestureEvent={type:'pose',handId:1,pose:'love'};
@@ -214,13 +214,25 @@ test('spark caps hold and sparks expire',()=>{
  assert.equal(r.idle(4.2).scene.sparks.length,0);
 });
 test('scene buffers are reused, chains can arrive after construction, reset clears',()=>{
- const w=world();w.chainCount=0;const e=new AtpEngine(w),v:AtpViewState={q:[0,0,0,1],zoom:1,x:0,y:0},f:GestureFrame={at:0,hands:[],events:[]};
- e.step(f,DT,v,false);w.chainCount=22;const a=e.step(f,DT,v,false).scene.chainOffsets;
- assert.equal(a.length,66);assert.equal(e.step(f,DT,v,false).scene.chainOffsets,a);
+ const w=world();w.partCount=0;const e=new AtpEngine(w),v:AtpViewState={q:[0,0,0,1],zoom:1,x:0,y:0},f:GestureFrame={at:0,hands:[],events:[]};
+ e.step(f,DT,v,false);w.partCount=22;const a=e.step(f,DT,v,false).scene.partOffsets;
+ assert.equal(a.length,66);assert.equal(e.step(f,DT,v,false).scene.partOffsets,a);
  const r=rig();turn(r,0,360);r.engine.reset();assert.equal(r.engine.atp,0);assert.equal(r.engine.rotorDegrees,0);assert.equal(r.run([]).scene.sparks.length,0);
 });
 test('motor sound reports rev/s every step and dt is clamped',()=>{
  const r=rig();r.engine.kick(1);const out=r.run([],[],false,10);
  const motor=out.sounds.find(s=>s.type==='motor');assert.ok(motor&&motor.type==='motor'&&motor.speed>0);
  assert.ok(r.engine.rotorDegrees<.05*.75*360+1);
+});
+
+test('the idle motor keeps turning, counts, and yields to the gestures',()=>{
+ const r=rig();r.engine.idle=true;
+ const running=r.idle(4);assert.ok(Math.abs(running.scene.rotorSpeed-.2)<.02,`idled at ${running.scene.rotorSpeed}`);
+ assert.equal(count(running.sounds,'atp'),0,'the resting motor stays quiet');
+ const much=r.idle(8);assert.ok(much.atp>=3,`made ${much.atp}`);assert.ok(much.sounds.filter(s=>s.type==='motor').every(s=>s.speed===0));
+ assert.ok(Math.abs(r.idle(4,[hand(1,'thumbUp')]).scene.rotorSpeed-1.5)<.02);
+ assert.ok(Math.abs(r.idle(6).scene.rotorSpeed-.2)<.03,'settles back after Make');
+ assert.ok(r.idle(4,[hand(1,'thumbDown')]).scene.rotorSpeed<-1.4);
+ assert.ok(r.idle(8).scene.rotorSpeed>.15,'recovers forward after Burn');
+ r.engine.idle=false;assert.equal(r.idle(6).scene.rotorSpeed,0);
 });

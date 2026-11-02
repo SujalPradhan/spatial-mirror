@@ -1,18 +1,6 @@
-import type {HandPose} from './contracts';
+import {mirrorGestures} from '../mirror/guide';
 
-export const gestureGuide:{id:string;pose:HandPose|'both-pinch'|'both-fist'|'clap';glyph:string;label:string}[]=[
- {id:'fist',pose:'fist',glyph:'✊',label:'Hold'},
- {id:'open',pose:'open',glyph:'🖐',label:'Part'},
- {id:'pinch',pose:'pinch',glyph:'🤏',label:'Pluck'},
- {id:'point',pose:'point',glyph:'☝️',label:'Stir'},
- {id:'victory',pose:'victory',glyph:'✌️',label:'Slice'},
- {id:'thumbUp',pose:'thumbUp',glyph:'👍',label:'Make'},
- {id:'thumbDown',pose:'thumbDown',glyph:'👎',label:'Burn'},
- {id:'love',pose:'love',glyph:'🤟',label:'Skin'},
- {id:'both-pinch',pose:'both-pinch',glyph:'🤏🤏',label:'Tear'},
- {id:'both-fist',pose:'both-fist',glyph:'✊✊',label:'Scale'},
- {id:'clap',pose:'clap',glyph:'👐',label:'Shock'},
-];
+export const gestureGuide=mirrorGestures({thumbUp:'Make',thumbDown:'Burn'});
 
 export const sources=[
  {label:'Structure 6OQR · E. coli ATP synthase, ADP state 1a',url:'https://www.rcsb.org/structure/6OQR'},

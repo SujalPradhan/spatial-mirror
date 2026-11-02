@@ -1,1 +1,15 @@
-#art-view{position:relative;overflow:hidden;height:600px;touch-action:none;background:radial-gradient(ellipse,#f1f6e9,#fafbf4)}#art-view>canvas{display:block}.art-settings #project-name{width:100%;padding:10px;border:1px solid #cedcc4;background:#fcfdf7;font:inherit;color:#3c6047;border-radius:4px}.art-settings select{max-width:100%;font:inherit;font-size:11px;padding:8px;color:#52724b;border:1px solid #d4dfca;border-radius:4px;background:#fafcf5}.art-projects{display:flex;gap:8px;margin:10px 0 20px}.art-projects select{min-width:0;flex:1}.art-settings .art-exports{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:25px}.art-exports label{border:1px solid #d2dfc7;border-radius:5px;justify-content:center;padding:10px;margin:0;font-size:12px;cursor:pointer}#save-status{font-size:10px;color:#8b987f}#storage-error button{margin-left:12px}.art-settings input[type=color]{width:50px;border:0;background:none}.art-settings label{gap:10px}@media(max-width:720px){#art-view{height:440px}.stand-hud{font-size:9px}.stand-intro h1{font-size:30px}}
+/* The stage is a lighter slate than the other workspaces so the default ink, and saved dark strokes, stay readable. */
+.art-workspace #art-view.mirror-workspace-stage{background:radial-gradient(ellipse at 50% 42%,#142231 0%,#0a1119 48%,#05080c 100%)}
+.art-workspace #project-name{width:100%;margin-bottom:8px}
+.art-workspace .art-projects{display:flex;gap:6px;margin:0 0 14px}
+.art-workspace .art-projects select{min-width:0;flex:1}
+.art-workspace .art-settings .stand-presets{margin:14px 0}
+.art-workspace .art-settings select{max-width:190px}
+.art-workspace .art-settings input[type=color]{width:42px;height:26px;padding:0;border:0;background:none}
+.art-workspace .art-exports{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:14px}
+.art-workspace .art-settings .art-exports label{justify-content:center;margin:0;padding:7px 10px;border:1px solid var(--mirror-line);border-radius:5px;background:rgba(255,255,255,.05);font-size:11px;color:var(--mirror-ink);cursor:pointer}
+.art-workspace .art-settings .art-exports label:hover{background:rgba(255,255,255,.12)}
+.art-workspace #save-status{margin-bottom:0}
+#storage-error button{margin-left:12px}
+.art-workspace .stand-hud,.art-workspace .stand-view-bottom{color:var(--mirror-ink)}
+.art-workspace .stand-hud>span,.art-workspace .stand-view-bottom>span{padding:4px 8px;border-radius:4px;background:rgba(5,8,12,.55)}
