@@ -16,14 +16,16 @@ body:has(.mirror-workspace) .hosted-preview{gap:6px;padding:4px 14px;font-size:1
 body:has(.mirror-workspace) .hosted-preview button{padding:4px 8px;border:1px solid rgba(255,255,255,.14);border-radius:5px;background:rgba(255,255,255,.06);color:#eef3f2;font:inherit}
 body:has(.mirror-workspace) .hosted-preview button:disabled{opacity:.45}
 body:has(.mirror-workspace) .hosted-preview summary{font-size:10px;color:rgba(238,243,242,.58)}
+/* The header row is tight, so the timings toggle shows a short label; its own text stays for assistive tech. */
+@media(min-width:901px){body:has(.mirror-workspace) .hosted-preview summary{font-size:0;list-style:none}body:has(.mirror-workspace) .hosted-preview summary::after{content:'Timings ▾';font-size:10px}body:has(.mirror-workspace) .hosted-preview{padding:4px 10px}}
 @media(min-width:901px){
  .mirror-workspace .topbar>:not(.brand){position:fixed;z-index:20;top:0;right:14px;height:42px;display:flex;align-items:center;gap:6px;margin:0;pointer-events:auto}
- body:has(.hosted-preview) .mirror-workspace .topbar>:not(.brand){right:190px}
+ body:has(.hosted-preview) .mirror-workspace .topbar>:not(.brand){right:150px}
  body:has(.mirror-workspace) .hosted-preview{position:fixed;z-index:20;top:0;right:0;height:42px;flex-wrap:nowrap;background:none;overflow:visible}
  body:has(.mirror-workspace) .hosted-preview>span{display:none}
  body:has(.mirror-workspace) .hosted-preview details{position:relative}
  body:has(.mirror-workspace) .hosted-preview details[open]>div{position:absolute;top:30px;right:0;width:320px;padding:10px 12px;border:1px solid rgba(255,255,255,.1);border-radius:8px;background:rgba(9,14,20,.95)}
 }
 /* Centred like ATP, with clear space either side for the right-hand controls; narrower windows start it at the left instead. */
-@media(min-width:901px){.mirror-workspace .workspace-nav{max-width:calc(100% - 600px)}}
+@media(min-width:901px){.mirror-workspace .workspace-nav{max-width:calc(100% - 488px)}}
 @media(min-width:901px) and (max-width:1180px){.mirror-workspace .workspace-nav{margin-left:0;max-width:calc(100% - 300px)}}
