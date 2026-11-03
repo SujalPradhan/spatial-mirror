@@ -8,10 +8,7 @@
  button:disabled{opacity:.42;cursor:not-allowed}
  summary{cursor:pointer}
  summary:focus-visible{outline:2px solid var(--mirror-accent);outline-offset:3px}
- .workspace-nav{flex:none;max-width:100%}
  .workspace-nav .active{font-weight:500}
- .hosted-preview{flex:none;padding:6px 20px;font-size:11px}
- .hosted-preview button{padding:4px 8px;border:1px solid var(--mirror-line);border-radius:5px;background:var(--control);color:var(--mirror-ink);font-size:11px}
 
  /* Full-bleed stage: the controls float over it. */
  .studio-main{position:relative;flex:1;min-height:0;overflow:hidden}

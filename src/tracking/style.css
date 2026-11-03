@@ -6,13 +6,8 @@
 /* Desktop Tracking lab. Everything dark is scoped to .tracking-lab so the phone never picks it up. */
 html:has(.tracking-lab),body:has(.tracking-lab){background:#05080c}
 .tracking-lab{--tracking-rail:288px;--tracking-gap:14px;display:grid;grid-template-columns:auto minmax(0,1fr);grid-template-rows:auto minmax(560px,1fr)}
-.tracking-lab:has(>.hosted-preview){grid-template-rows:auto auto minmax(560px,1fr)}
-.tracking-lab>.topbar{position:static;display:flex;align-items:center;height:auto;min-height:0;padding:0 8px 0 20px;background:rgba(5,8,12,.55);border-bottom:1px solid rgba(255,255,255,.07)}
-.tracking-lab>.topbar .brand{font-size:11px;letter-spacing:.08em;text-decoration:none;white-space:nowrap}
-.tracking-lab>.workspace-nav{margin:0;min-width:0;justify-content:safe center;padding-left:8px}
-.tracking-lab>.hosted-preview{grid-column:1/-1;padding:5px 20px;font-size:11px}
-.tracking-lab>.hosted-preview button{padding:4px 9px;border-color:rgba(255,255,255,.2);border-radius:5px;background:none;color:var(--mirror-ink);font:inherit}
-.tracking-lab>.hosted-preview button:hover:not(:disabled){background:rgba(255,255,255,.1)}
+.tracking-lab>.topbar{display:none}
+.tracking-lab>.workspace-nav{grid-column:1/-1;justify-self:center;min-width:0}
 .tracking-main{grid-column:1/-1;position:relative;min-width:0;overflow:hidden}
 .tracking-stage{position:absolute;inset:0}
 #tracking-view{position:absolute;inset:0;overflow:hidden}
@@ -55,7 +50,6 @@ body:has(.tracking-lab) #hosted-pair-dialog output{background:rgba(255,255,255,.
 body:has(.tracking-lab) #hosted-pair-dialog button{background:none;color:inherit;border-color:rgba(255,255,255,.2)}
 @media(max-width:1060px){
  .tracking-lab{grid-template-rows:auto auto;align-content:start}
- .tracking-lab:has(>.hosted-preview){grid-template-rows:auto auto auto}
  .tracking-main{overflow:visible;padding-bottom:var(--tracking-gap)}
  .tracking-stage{position:relative;inset:auto;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px var(--tracking-gap);padding-bottom:var(--tracking-gap)}
  #tracking-view{position:relative;inset:auto;flex:0 0 100%;height:44svh;min-height:300px}
@@ -67,7 +61,6 @@ body:has(.tracking-lab) #hosted-pair-dialog button{background:none;color:inherit
  .tracking-lab .tracking-setup{position:static;width:auto;max-height:none;margin:10px var(--tracking-gap) 0;overflow:visible}
 }
 @media(max-width:640px){
- .tracking-lab>.topbar{padding-left:14px}
  .tracking-cameras{grid-template-columns:minmax(0,1fr)}
  .tracking-head p{max-width:230px}
  .tracking-corner button{padding:9px 6px;font-size:11px}

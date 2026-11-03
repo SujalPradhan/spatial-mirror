@@ -3,12 +3,8 @@
 /* Desktop studio: dark stage. Everything below stays under .pottery-workspace so the phone is untouched. */
 body:has(.pottery-workspace){background:#05080c}
 .pottery-workspace{display:grid;grid-template-columns:auto minmax(0,1fr);grid-template-rows:auto auto minmax(0,1fr);height:100svh;min-height:0;overflow:hidden}
-.pottery-workspace .topbar{grid-column:1;grid-row:1;height:auto;padding:0 8px 0 20px;max-width:none;border-bottom:1px solid rgba(255,255,255,.07)}
-.pottery-workspace .brand{font-size:11px;white-space:nowrap}
-.pottery-workspace .workspace-nav{grid-column:2;grid-row:1;min-width:0;margin:0;padding-left:8px}
-.pottery-workspace .hosted-preview{grid-column:1/-1;grid-row:2;max-height:40svh;overflow:auto;padding:4px 20px;font-size:11px}
-.pottery-workspace .hosted-preview button{padding:4px 9px;border:1px solid rgba(255,255,255,.2);border-radius:5px;background:rgba(255,255,255,.08);color:var(--mirror-ink);font-size:11px}
-.pottery-workspace .hosted-preview button:disabled{opacity:.45}
+.pottery-workspace .topbar{display:none}
+.pottery-workspace .workspace-nav{grid-column:1/-1;grid-row:1;justify-self:center;min-width:0}
 .pottery-workspace .pottery-main{grid-column:1/-1;grid-row:3;position:relative;min-height:0;overflow:hidden;color:var(--mirror-ink)}
 .pottery-workspace .pottery-main [hidden]{display:none!important}
 .pottery-workspace .pottery-main *{box-sizing:border-box}
@@ -68,9 +64,6 @@ body:has(.pottery-workspace) #hosted-pair-dialog button{background:rgba(255,255,
 body:has(.pottery-workspace) #hosted-pair-dialog>output,body:has(.pottery-workspace) #hosted-pair-dialog #pairing-fallback output{background:rgba(255,255,255,.08)}
 @media(max-width:800px){
 .pottery-workspace{height:auto;min-height:100svh;overflow:visible}
-.pottery-workspace .topbar{padding:0 4px 0 14px}
-.pottery-workspace .workspace-nav{padding:6px 10px 6px 4px}
-.pottery-workspace .hosted-preview{padding:4px 14px}
 .pottery-workspace .pottery-main{overflow:visible;display:flex;flex-direction:column;gap:10px;padding-bottom:16px}
 .pottery-workspace .pottery-viewport{position:relative;inset:auto;height:54svh;min-height:300px;flex:none}
 .pottery-workspace .pottery-intro{left:14px;right:14px;top:12px}

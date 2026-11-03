@@ -8,10 +8,6 @@ body:has(.stand-workspace){background:#05080c}
 .stand-workspace{--stage-gap:14px;--drawer-width:320px;--stage-right:calc(var(--drawer-width) + var(--stage-gap)*2);height:100svh;min-height:0;display:flex;flex-direction:column;overflow:hidden}
 .stand-workspace .topbar{position:absolute;z-index:7;inset:0 0 auto;height:37px;padding:0 20px;border:0;background:none;pointer-events:none}
 .stand-workspace .topbar>*{pointer-events:auto}
-.stand-workspace .brand{gap:5px;font-size:11px;font-weight:700;letter-spacing:.05em}
-.stand-workspace .brand-mark{font-size:15px;color:var(--mirror-accent)}
-.stand-workspace .brand-light{margin-left:0}
-.stand-workspace .workspace-nav{position:relative;z-index:6;flex:none;width:100%;padding-left:124px;padding-right:220px}
 .stand-workspace .connection-pill{padding:5px 10px;font-size:10px;background:rgba(255,255,255,.07);color:var(--mirror-dim)}
 .stand-workspace .stand-header{display:flex;gap:4px;align-items:center}
 .stand-workspace .stand-header a{padding:5px 8px;font-size:10px;color:var(--mirror-dim);text-decoration:none}

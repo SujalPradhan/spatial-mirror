@@ -7,7 +7,7 @@ import {currentDocument} from './documents';
 document.documentElement.classList.add('hosted-studio');if(webcamOnly)document.documentElement.classList.add('webcam-preview');
 const bar=document.createElement('aside');
 bar.className='hosted-preview';
-bar.innerHTML=`<span>${webcamOnly?'Webcam preview · Phone control stays in the local build.':'Hand tracking stays on this laptop.'}</span>${webcamOnly?'':'<button id="pair-phone">Connect phone</button>'}<details><summary>Tracking timings</summary><output id="hosted-timings">Enable the webcam to measure this laptop.</output><p>Inference and worker timings exclude camera capture and display latency.</p><button id="save-timings" disabled>Save timings</button></details>`;
+bar.innerHTML=`<span>${webcamOnly?'Webcam preview · Phone control stays in the local build.':'Hand tracking stays on this laptop.'}</span>${webcamOnly?'':'<button id="pair-phone">Connect phone</button>'}<details><summary>Tracking timings</summary><div><output id="hosted-timings">Enable the webcam to measure this laptop.</output><p>Inference and worker timings exclude camera capture and display latency.</p><button id="save-timings" disabled>Save timings</button></div></details>`;
 const nav=document.querySelector('.workspace-nav');
 if(nav)nav.after(bar);else document.querySelector('#app')!.prepend(bar);
 if(webcamOnly)for(const button of document.querySelectorAll<HTMLElement>('[data-mode="webcam"]'))button.textContent='Webcam';
