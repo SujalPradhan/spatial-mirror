@@ -20,8 +20,9 @@ const quiet=async()=>{await page.evaluate(()=>clearInterval(window.testFeed));aw
 const posed=(...want)=>page.waitForFunction(w=>{const p=window.__perfumeStudio.frame.hands.map(h=>h.pose);return w.every(x=>p.includes(x));},want);
 const read=fn=>page.evaluate(fn);
 const shot=async name=>{if(shots)await page.screenshot({path:`${shots}/${name}.png`});};
-/** A part's middle on stage, in mirror space, wherever it is now. */
-const at=id=>page.evaluate(id=>{
+/** A part's middle on stage, in mirror space, wherever it is now. The scene only takes a new view (say after Recenter) on the next animation frame, so wait for two. */
+const at=id=>page.evaluate(async id=>{
+ await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
  const s=window.__perfumeStudio,view=s.view,mesh=view.part(id).motion.children[0],v=document.querySelector('#perfume-video'),a=v.videoWidth/v.videoHeight;
  mesh.geometry.computeBoundingSphere();const p=mesh.localToWorld(mesh.geometry.boundingSphere.center.clone()).project(view.camera),host=document.querySelector('#perfume-viewport'),stage=host.clientWidth/host.clientHeight;
  const x=(p.x+1)/2,y=(1-p.y)/2;
