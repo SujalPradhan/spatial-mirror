@@ -1,0 +1,12 @@
+.machine-page{--mirror-accent:#ff8a70;--mirror-accent-rgb:255,138,112}
+.machine-caption{position:absolute;z-index:3;left:24px;top:96px;margin:0;width:min(250px,26%);pointer-events:none;font:500 15px/1.35 'Manrope',system-ui,sans-serif;letter-spacing:-.01em;text-shadow:0 1px 10px rgba(5,8,12,.9)}
+.machine-caption.is-fault{color:var(--mirror-accent)}
+.machine-legend{position:absolute;z-index:3;left:24px;top:44px;margin:0;display:flex;flex-direction:column;gap:2px;pointer-events:none;font-size:10px}
+.is-live .machine-legend{top:74px}
+.is-live .machine-caption{top:120px}
+.machine-legend .top{color:#ff5a4a}.machine-legend .under{color:#35d6ff}
+.machine-controls{position:absolute;z-index:4;right:18px;bottom:52px;display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+.machine-controls button{padding:7px 11px;border:1px solid rgba(255,255,255,.16);border-radius:6px;background:rgba(5,8,12,.5);font-size:11px;backdrop-filter:blur(8px)}
+.machine-controls button:hover{background:rgba(255,255,255,.12)}
+.machine-controls button.is-off{border-color:var(--mirror-accent);color:var(--mirror-accent)}
+@media(max-width:900px){.machine-caption{left:12px;top:92px;width:60%;font-size:13px}.machine-controls{top:84px;bottom:auto;right:12px}}

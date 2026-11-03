@@ -1,0 +1,4 @@
+.perfume-page{--mirror-accent:#e8a02c;--mirror-accent-rgb:232,160,44}
+.perfume-caption{position:absolute;z-index:3;left:50%;bottom:112px;transform:translateX(-50%);margin:0;max-width:min(680px,calc(100% - 32px));padding:7px 13px;border-left:2px solid var(--mirror-accent);border-radius:0 5px 5px 0;background:rgba(5,8,12,.68);backdrop-filter:blur(8px);pointer-events:none;font-size:13px;line-height:1.45;color:var(--mirror-ink);text-align:left}
+.perfume-caption:empty{display:none}
+@media(max-width:900px){.perfume-caption{bottom:188px;font-size:12px}}

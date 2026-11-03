@@ -6,9 +6,11 @@ if((webcamOnly&&location.pathname.includes('/phone'))||(hosted&&location.pathnam
 else if(['/phone','/mechanism/phone','/mechanism/box/phone'].includes(location.pathname))await import('./phone');
 else if(['/atp','/atp/'].includes(location.pathname))await import('./atp/app');
 else if(location.pathname==='/pottery')await import('./pottery/app');
+else if(location.pathname==='/perfume')await import('./perfume/app');
 else if(location.pathname==='/tracking')await import('./tracking/app');
 else if(location.pathname==='/art')await import('./art/app');
 else if(location.pathname==='/maths')await import('./maths/app');
+else if(location.pathname==='/machine')await import('./machine/app');
 else if(location.pathname==='/mechanism/box')await import('./mechanism/app');
 else if(location.pathname==='/mechanism')await import('./stand/app');
 else if(location.pathname==='/phone/lab'||location.pathname.startsWith('/lab'))await import('./lab');

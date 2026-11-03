@@ -12,13 +12,13 @@ export const atpPhonePanel=`<section id="atp-phone-panel" hidden aria-label="ATP
 /** Only the ATP workspace changes the shared pad/slider labels. */
 export function updateAtpPhone(state:Packet|null,enabled:boolean,fine:boolean,hold:boolean){
  const panel=document.querySelector<HTMLElement>('#atp-phone-panel')!;panel.hidden=state?.workspace!=='atp';if(panel.hidden)return;
- const rotor=state!.tool==='rotor',input=document.querySelector<HTMLInputElement>('#fine')!;
+ const rotor=state!.tool==='rotor',input=document.querySelector<HTMLInputElement>('#fine')!,labels=(state!.labels??{}) as {tool?:string;play?:string;stop?:string;percent?:boolean};
  document.querySelector('#pad-label')!.textContent=rotor?`Hold to turn the ${state!.motionLabel??'rotor'}`:'Hold to turn the view';
- document.querySelector('#fine-label')!.textContent=rotor?`${String(state!.motionLabel??'rotor').replace(/^./,c=>c.toUpperCase())} angle`:'Zoom';input.min=rotor?'0':'.65';input.max=rotor?'360':'2.5';input.step=rotor?'1':'.01';input.disabled=!enabled||hold;
+ document.querySelector('#fine-label')!.textContent=rotor?`${String(state!.motionLabel??'rotor').replace(/^./,c=>c.toUpperCase())} ${labels.percent?'stroke':'angle'}`:'Zoom';input.min=rotor?'0':'.65';input.max=rotor?'360':'2.5';input.step=rotor?'1':'.01';input.disabled=!enabled||hold;
  if(!fine)input.value=String(rotor?state!.phase:state!.zoom??1);
- document.querySelector('#fine-value')!.textContent=rotor?`${Math.round(Number(input.value))}°`:`${Number(input.value).toFixed(2)}×`;
+ document.querySelector('#fine-value')!.textContent=rotor?labels.percent?`${Math.round(Number(input.value)/3.6)}%`:`${Math.round(Number(input.value))}°`:`${Number(input.value).toFixed(2)}×`;
  for(const button of panel.querySelectorAll<HTMLButtonElement>('[data-action]')){
-  const action=button.dataset.action!;button.hidden=action==='atp-play'?state!.playing===true:action==='atp-pause'?state!.playing!==true:false;
+  const action=button.dataset.action!,text={'atp-rotor':labels.tool??'Turn rotor','atp-play':labels.play??'Spin','atp-pause':labels.stop??'Stop'}[action];if(text)button.textContent=text;button.hidden=action==='atp-play'?state!.playing===true:action==='atp-pause'?state!.playing!==true:false;
   button.setAttribute('aria-pressed',String(action===`atp-${state!.tool}`));
  }
 }

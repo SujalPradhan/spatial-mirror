@@ -32,6 +32,9 @@ let owner:MirrorInputSource|null=null,before:MirrorState|null=null,history:Mirro
 const empty=():GestureFrame=>({at:0,hands:[],events:[]});
 const viewport=part('viewport'),view=object.createView(viewport),engine=object.createEngine(view),audio=object.createAudio(),tracker=new GestureTracker();
 let frame=empty(),lastHands=-Infinity,shockAt=-Infinity;
+// Pose and clap events last one tracker update; one not yet drawn is carried into the next, so a fast camera cannot drop a 🤟 or a clap.
+let drawn=true;
+function carry(next:GestureFrame){if(!drawn)next.events=[...frame.events,...next.events].slice(-20);drawn=false;return next;}
 const trackingSession=crypto.randomUUID();let phoneCapture='',phoneSequence=0,phoneFrames=0,phoneCamera=false;
 function notice(s:string){if(s!==spoken)part('status').textContent=spoken=s;}
 function angle(){return ((engine.position%360)+360)%360;}
@@ -107,7 +110,7 @@ viewport.onkeydown=e=>{if(e.key===' '&&!state.frozen){e.preventDefault();void au
 let stream:MediaStream|null=null,probe:HandProbe|null=null,cameraStarting=false,cameraGeneration=0;
 const video=part<HTMLVideoElement>('video');
 function stopCamera(){endTutorial();cameraGeneration++;cameraStarting=false;probe?.stop();probe=null;stream?.getTracks().forEach(t=>t.stop());stream=null;video.srcObject=null;tracker.reset();frame=empty();part('stage').classList.remove('is-live');part('camera').textContent='Step into the mirror';part('camera').removeAttribute('aria-pressed');}
-function hands(raw:Landmark[][],at:number,world:Landmark[][],handedness:(string|null)[]=[],aspect=video.videoWidth/video.videoHeight||16/9){if(raw.length)lastHands=performance.now();frame=tracker.update(raw,at,world,handedness,aspect);if(frame.events.some(e=>e.type==='clap')){shockAt=performance.now();tutorialClap=true;}}
+function hands(raw:Landmark[][],at:number,world:Landmark[][],handedness:(string|null)[]=[],aspect=video.videoWidth/video.videoHeight||16/9){if(raw.length)lastHands=performance.now();frame=carry(tracker.update(raw,at,world,handedness,aspect));if(frame.events.some(e=>e.type==='clap')){shockAt=performance.now();tutorialClap=true;}}
 async function startCamera(){
  if(stream||cameraStarting){stopCamera();return;}
  const generation=++cameraGeneration;cameraStarting=true;void audio.start();part('camera').textContent='Opening camera…';
@@ -154,7 +157,7 @@ function tick(now:number){
  if(ready){
   // Idle motion stops whenever the object says so or the viewer asked for less.
   engine.idle=!!object.idles?.(state as State)&&!stillMotion.matches;
-  const out=engine.step(frame,dt,state.view,state.frozen);
+  const out=engine.step(frame,dt,state.view,state.frozen);drawn=true;
   if(out.holding){if(out.view&&begin('hand'))Object.assign(state.view,out.view);}else finish('hand');
   for(const sound of out.sounds)audio.play(sound);
   if(object.readout&&object.copy.readoutUnit){const value=object.readout(out as ReturnType<Engine['step']>);if(value!==lastReadout)part('count').textContent=String(lastReadout=value);}

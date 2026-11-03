@@ -109,7 +109,9 @@ export interface MirrorCopy {
 }
 export interface MirrorAbout {heading:string;note:string;privacy:string;sources:{label:string;url:string}[]}
 /** The relay drops a state without every required field, silently. title and motionLabel only reach the phone's copy. */
-export interface MirrorDescriptor {chapter:number;guided:boolean;tool:MirrorTool;representation:string;phase:number;selected:null;zoom:number;title?:string;motionLabel?:string}
+export interface MirrorDescriptor {chapter:number;guided:boolean;tool:MirrorTool;representation:string;phase:number;selected:null;zoom:number;title?:string;motionLabel?:string;labels?:MirrorPhoneLabels}
+/** Phone wording for an object's motion; ATP's rotor wording is the default. percent shows the angle as a share of a full stroke. */
+export interface MirrorPhoneLabels {tool?:string;play?:string;stop?:string;percent?:boolean}
 export interface MirrorObject<State extends MirrorState=MirrorState,View extends MirrorView=MirrorView,Engine extends MirrorDriver=MirrorDriver> {
  /** Prefix of every element id and of the page class. */
  id:string;documentKey:string;title:string;skins:readonly string[];
