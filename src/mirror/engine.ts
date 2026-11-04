@@ -1,5 +1,6 @@
 import {Quaternion,Vector3} from 'three';
 import type {Quat} from '../types';
+import type {MirrorAim} from './parts-overlay';
 import {MIRROR_ZOOM_MAX as ZOOM_MAX,MIRROR_ZOOM_MIN as ZOOM_MIN,type GestureFrame,type HandPose,type MirrorBehaviour,type MirrorContext,type MirrorDriver,type MirrorEngineOutput,type MirrorField,type MirrorHandView,type MirrorLabel,type MirrorScene,type MirrorSound,type MirrorViewPatch,type MirrorViewState,type MirrorWorld,type TrackedHand,type WorldPoint} from './contracts';
 
 export const REV=Math.PI*2,EPS=1e-9,GOLDEN=2.399963;
@@ -19,7 +20,27 @@ export const ease=(h:number,tau:number)=>1-Math.exp(-h/tau);
 const X=new Vector3(1,0,0),Y=new Vector3(0,1,0),Z=new Vector3(0,0,1);
 
 interface Grip {two:boolean;a:number;b:number;base:Quaternion;x:number;y:number;zoom:number;ref:Quaternion|null;px:number;py:number;distance:number;angle:number;roll:number}
-interface Pluck {part:number;sx:number;sy:number;sz:number;ox:number;oy:number;oz:number;x:number;y:number;z:number}
+interface Pluck {part:number;sx:number;sy:number;sz:number;ox:number;oy:number;oz:number;x:number;y:number;z:number;
+ /** Assisted only: engine clock when the pinch holding it dropped, while it waits to be taken back. */
+ lost?:number}
+/** Opt-in help for catching small things by hand. ATP does not ask for it, so nothing below changes there. */
+export interface MirrorAssist {
+ /** Seconds a pluck outlives a dropped pinch, and world units within which a fresh pinch takes it back. */
+ grace:number;regrab:number;
+ /** Seconds a target hovered by a closing pinch is still the one taken when the pinch lands. */
+ lock:number;
+}
+/** What an assisted behaviour may add: the config, and a target of its own that is not a part (a thread, say). */
+export interface MirrorAssisted {
+ assist?:MirrorAssist;
+ /** Where a pinch closing at p would take hold of the behaviour's own target, or null. Called as fingers close, so it may also light the candidate. */
+ aim?(p:WorldPoint):WorldPoint|null;
+ /** A pinch has landed at p: return true to take it, so no part is plucked. */
+ claim?(hand:number,p:WorldPoint):boolean;
+}
+/** A closing pinch: the fingers part by less than this many palm lengths, measured on screen. */
+const AIM_RATIO=.8,AIM_SHUT=.35,MISS_LIFE=.6;
+interface Hover {at:number;point:WorldPoint;target:WorldPoint|null;part:number;closeness:number}
 interface Tear {a:number;b:number;start:number;base:number}
 interface Stir {angle:number;x:number;y:number}
 interface HandCache {view:MirrorHandView;palm:WorldPoint;tip:WorldPoint}
@@ -39,7 +60,12 @@ export class MirrorEngine<Skin extends string,Extra extends object,Sound=MirrorS
   const s=this.scene=Object.assign(behaviour.initialScene(),{explode:0,partOffsets:new Float32Array(0),partGlow:new Float32Array(0),fields:[],shocks:[],slice:{amount:0,x:0},skin:skins[0],hands:[],label:null} satisfies MirrorScene<Skin>);
   this.context={scene:s,view:{q:[0,0,0,1],zoom:1,x:0,y:0},frozen:false,sound:sound=>{this.sounds.push(sound);},glow:(part,amount)=>{s.partGlow[part]=Math.max(s.partGlow[part],amount);},touching:(x,y,radius)=>this.touching(x,y,radius)};
   this.fit();
+  const assisted=behaviour as MirrorAssisted;this.assist=assisted.assist??null;
+  // The behaviour opts in by carrying an aims list in its scene.
+  const aims=(s as {aims?:MirrorAim[]}).aims;this.aims=this.assist&&Array.isArray(aims)?aims:null;
  }
+ private assist:MirrorAssist|null=null;private aims:MirrorAim[]|null=null;private clock=0;
+ private hovers=new Map<number,Hover>();private misses:{x:number;y:number;z:number;age:number}[]=[];
 
  // An object without motion keeps these; one with a motor overrides them.
  get idle(){return false;}
@@ -56,13 +82,14 @@ export class MirrorEngine<Skin extends string,Extra extends object,Sound=MirrorS
   const s=this.scene;this.lastAt=NaN;this.sinceFrame=0;this.sounds=[];
   this.grip=this.tear=null;this.plucks.clear();this.tearTarget=0;this.fallFrom=0;this.fallT=1;this.tearArmed=true;this.fields.clear();this.stirs.clear();this.pinching.clear();this.cache.clear();this.lastPose.clear();
   this.fingerHover=this.mouseHover=null;this.hoverPart=-1;this.hoverClock=HOVER_PERIOD;this.sliceTarget=null;this.skinIndex=0;
+  this.hovers.clear();this.misses.length=0;if(this.aims)this.aims.length=0;
   s.explode=s.slice.amount=s.slice.x=0;s.skin=this.skins[0];s.label=null;s.partOffsets.fill(0);s.partGlow.fill(0);this.velocity.fill(0);s.fields.length=s.shocks.length=s.hands.length=0;
   this.behaviour.reset(s);
  }
 
  step(frame:GestureFrame,dt:number,view:MirrorViewState,frozen:boolean):MirrorEngineOutput<MirrorScene<Skin>&Extra,Sound|MirrorSound>{
   const h=Number.isFinite(dt)?clamp(dt,0,MAX_DT):0,s=this.scene,c=this.context,b=this.behaviour;
-  this.fit();c.frozen=frozen;c.view=view;this.sinceFrame+=h;
+  this.fit();c.frozen=frozen;c.view=view;this.sinceFrame+=h;this.clock+=h;
   let patch:MirrorViewPatch|null=null;
   if(frame.at!==this.lastAt){
    this.lastAt=frame.at;this.track(frame);
@@ -73,6 +100,7 @@ export class MirrorEngine<Skin extends string,Extra extends object,Sound=MirrorS
   b.advance(h,c);this.springs(h);this.easeFields(h);this.easeExplode(h);this.easeSlice(h);b.settle(h,c);
   for(let i=s.shocks.length-1;i>=0;i--)if((s.shocks[i].age+=h)>=SHOCK_LIFE)s.shocks.splice(i,1);
   this.hoverLabel(h);
+  if(this.aims)this.drawAims(h,frozen);
   b.publish(c);
   const sounds=this.sounds;this.sounds=[];
   return {scene:s,view:patch,sounds,holding:!!this.grip};
@@ -163,7 +191,15 @@ export class MirrorEngine<Skin extends string,Extra extends object,Sound=MirrorS
  }
  private pinches(frame:GestureFrame){
   const pinches=frame.hands.filter(h=>h.pose==='pinch').sort((a,b)=>a.id-b.id);
-  for(const key of this.plucks.keys())if(key!==POINTER&&!pinches.some(h=>h.id===key))this.release(key,true);
+  for(const [key,pluck] of this.plucks){
+   if(key===POINTER)continue;
+   const on=pinches.some(h=>h.id===key);
+   // Assisted, a pose that flickers out keeps hold a moment, so a tired or tracked-badly hand does not drop the part.
+   if(on||!this.assist){if(on)pluck.lost=undefined;else this.release(key,true);continue;}
+   pluck.lost??=this.clock;
+   if(this.clock-pluck.lost>this.assist.grace)this.release(key,true);
+  }
+  if(this.assist)this.approach(frame);
   if(pinches.length>1){
    const [a,b]=pinches,distance=Math.hypot(a.pinch.x-b.pinch.x,a.pinch.y-b.pinch.y);
    if(!this.tear||this.tear.a!==a.id||this.tear.b!==b.id){
@@ -174,7 +210,7 @@ export class MirrorEngine<Skin extends string,Extra extends object,Sound=MirrorS
    this.cache.get(a.id)!.view.active=this.cache.get(b.id)!.view.active=true;
   }else{
    this.endTear();
-   if(pinches.length&&!this.pinching.has(pinches[0].id))this.grab(pinches[0].id,this.world.mirrorToWorld(pinches[0].pinch));
+   if(pinches.length&&!this.pinching.has(pinches[0].id))this.grab(pinches[0].id,this.landing(pinches[0].id,this.world.mirrorToWorld(pinches[0].pinch)));
    else if(pinches.length){const pluck=this.plucks.get(pinches[0].id);if(pluck){const p=this.world.mirrorToWorld(pinches[0].pinch);pluck.x=p.x;pluck.y=p.y;pluck.z=p.z;}}
    if(pinches.length)this.cache.get(pinches[0].id)!.view.active=this.plucks.has(pinches[0].id);
   }
@@ -182,14 +218,56 @@ export class MirrorEngine<Skin extends string,Extra extends object,Sound=MirrorS
  }
  private endTear(){if(this.tear){this.tear=null;this.fallFrom=this.scene.explode;this.fallT=0;}}
  private grab(key:number,p:WorldPoint){
+  if(this.assist&&key!==POINTER){
+   // A pluck still waiting after its pinch dropped is taken back by the same hand, or by any pinch landing next to it.
+   for(const [k,pluck] of this.plucks){
+    if(pluck.lost===undefined||(k!==key&&Math.hypot(pluck.x-p.x,pluck.y-p.y)>this.assist.regrab))continue;
+    this.plucks.delete(k);pluck.lost=undefined;pluck.x=p.x;pluck.y=p.y;pluck.z=p.z;this.plucks.set(key,pluck);return true;
+   }
+   if((this.behaviour as MirrorAssisted).claim?.(key,p))return true;
+  }
   const part=this.world.partAt(p);
-  if(part<0||part>=this.scene.partGlow.length)return false;
+  if(part<0||part>=this.scene.partGlow.length){if(this.assist&&key!==POINTER)this.misses.push({...p,age:0});return false;}
   for(const pluck of this.plucks.values())if(pluck.part===part)return false;
   this.behaviour.grabbed?.(part,this.context);
   const o=this.scene.partOffsets,i=part*3;
   this.plucks.set(key,{part,sx:p.x,sy:p.y,sz:p.z,ox:o[i],oy:o[i+1],oz:o[i+2],x:p.x,y:p.y,z:p.z});
   this.sounds.push({type:'pluck'});return true;
  }
+ /** Where a pinch lands: the target its fingers were closing on a moment ago, since closing them drags the midpoint off it. */
+ private landing(key:number,p:WorldPoint):WorldPoint{
+  const hover=this.assist?this.hovers.get(key):undefined;
+  return hover&&(hover.target||hover.part>=0)&&this.clock-hover.at<=this.assist!.lock?hover.point:p;
+ }
+ /** Each hand closing toward a pinch: what it would take, remembered for the landing and drawn as a reticle. */
+ private approach(frame:GestureFrame){
+  const seen=new Set<number>();
+  for(const hand of frame.hands){
+   const c=this.cache.get(hand.id),j=c?.view.joints;
+   if(!j||j.length<21||hand.pose==='pinch'||hand.pose==='fist'||this.plucks.has(hand.id))continue;
+   const palm=Math.hypot(j[9].x-j[0].x,j[9].y-j[0].y),ratio=palm>1e-6?Math.hypot(j[8].x-j[4].x,j[8].y-j[4].y)/palm:Infinity;
+   if(!(ratio<AIM_RATIO))continue;
+   const point={x:(j[4].x+j[8].x)/2,y:(j[4].y+j[8].y)/2,z:(j[4].z+j[8].z)/2},target=(this.behaviour as MirrorAssisted).aim?.(point)??null,part=target?-1:this.world.partAt(point);
+   this.hovers.set(hand.id,{at:this.clock,point,target:target??(part>=0&&part<this.scene.partGlow.length?point:null),part,closeness:clamp((AIM_RATIO-ratio)/(AIM_RATIO-AIM_SHUT),0,1)});seen.add(hand.id);
+  }
+  // Kept a moment past the last closing frame, for the landing; drawn only while still closing.
+  for(const [id,hover] of this.hovers)if(!seen.has(id)&&this.clock-hover.at>this.assist!.lock)this.hovers.delete(id);
+  this.approaching=seen;
+ }
+ private approaching=new Set<number>();
+ private drawAims(h:number,frozen:boolean){
+  const aims=this.aims!;aims.length=0;
+  for(let i=this.misses.length-1;i>=0;i--)if((this.misses[i].age+=h/MISS_LIFE)>=1)this.misses.splice(i,1);
+  if(frozen)return;
+  for(const [id,hover] of this.hovers){
+   if(!this.approaching.has(id))continue;
+   if(hover.part>=0&&hover.part<this.scene.partGlow.length)this.context.glow(hover.part,.25+.35*hover.closeness);
+   aims.push({kind:'reticle',x:hover.point.x,y:hover.point.y,z:hover.point.z,target:hover.target,amount:hover.closeness});
+  }
+  for(const m of this.misses)aims.push({kind:'miss',x:m.x,y:m.y,z:m.z,target:null,amount:m.age});
+ }
+ /** Drops every pluck at once, grace or not: for an object putting itself back together, so nothing still held drags a part out again. */
+ letGo(){for(const key of [...this.plucks.keys()])this.release(key,false);this.hovers.clear();}
  private release(key:number,loud:boolean){
   const pluck=this.plucks.get(key);if(!pluck)return;
   this.plucks.delete(key);if(loud)this.sounds.push({type:'snap'});

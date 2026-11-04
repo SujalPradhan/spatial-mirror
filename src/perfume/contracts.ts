@@ -1,4 +1,5 @@
 import type {MirrorEngineOutput,MirrorScene,MirrorSound,MirrorWorld} from '../mirror/contracts';
+import type {MirrorAim} from '../mirror/parts-overlay';
 import type {Silhouette} from './flacon';
 import type {PumpState,Spray} from './model';
 
@@ -17,6 +18,8 @@ export interface PerfumeSceneExtra {
  time:number;
  /** Seconds into a 👎 rewind, or -1. */
  rewind:number;
+ /** Reticles and missed pinches, drawn by the overlay. */
+ aims?:MirrorAim[];
 }
 export type PerfumeScene=MirrorScene<PerfumeSkin>&PerfumeSceneExtra;
 export interface PerfumeWorld extends MirrorWorld {

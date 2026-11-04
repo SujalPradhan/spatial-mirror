@@ -1,5 +1,5 @@
 import {Quaternion,Vector3} from 'three';
-import {clamp,ease} from '../mirror/engine';
+import {clamp,ease,type MirrorAssisted} from '../mirror/engine';
 import type {MirrorBehaviour,MirrorContext,MirrorViewState} from '../mirror/contracts';
 import type {PerfumeScene,PerfumeSceneExtra,PerfumeSkin,PerfumeSound,PerfumeWorld} from './contracts';
 import {activeFailures,createPump,failures,setRemoved,stepPump,type PumpState,type Spray} from './model';
@@ -31,7 +31,11 @@ export function slotOffset(id:string,view:{q:readonly number[]},out:Float32Array
 }
 
 /** The pump, what has been taken out of it, and what that did. */
-export class PerfumeBehaviour implements MirrorBehaviour<PerfumeSkin,PerfumeSceneExtra,PerfumeSound> {
+export class PerfumeBehaviour implements MirrorBehaviour<PerfumeSkin,PerfumeSceneExtra,PerfumeSound>,MirrorAssisted {
+ /** Reticles as fingers close, a moment's grace for a pinch that flickers, and the target locked as it lands. */
+ readonly assist={grace:.5,regrab:.6,lock:.3};
+ /** A part drawn past REMOVE_AT and still held: it comes out only when let go there, so it can be brought back first. */
+ pending=-1;
  pump=createPump();idle=false;seekDegrees=0;lastSpray:Spray='none';time=1;rewindT=-1;
  private holdDepth=0;private rewound=false;
  private driving=0;private pressT=-1;private dragDepth=0;private dragBase=0;
@@ -40,7 +44,7 @@ export class PerfumeBehaviour implements MirrorBehaviour<PerfumeSkin,PerfumeScen
  private ids:string[]=[];private scene:PerfumeScene|null=null;private slot=new Float32Array(3);
  constructor(private world:PerfumeWorld){}
 
- initialScene():PerfumeSceneExtra{const n=this.world.partCount;return {pump:this.pump,parked:new Float32Array(n),parkFrom:new Float32Array(n*3),caption:'',time:1,rewind:-1};}
+ initialScene():PerfumeSceneExtra{const n=this.world.partCount;return {pump:this.pump,parked:new Float32Array(n),parkFrom:new Float32Array(n*3),caption:'',time:1,rewind:-1,aims:[]};}
  fit(count:number){
   this.ids=Array.from({length:count},(_,i)=>this.world.partInfo(i).id);
   this.actuator=this.ids.indexOf('actuator');this.bottle=this.ids.indexOf('bottle');this.liquid=this.ids.indexOf('liquid');
@@ -69,14 +73,17 @@ export class PerfumeBehaviour implements MirrorBehaviour<PerfumeSkin,PerfumeScen
  dragged(part:number,dx:number,dy:number,_dz:number,c:Context){
   if(part===this.actuator){this.dragDepth=clamp(this.dragBase-dy/PRESS_TRAVEL,0,1);return true;}
   const id=this.ids[part] as PartId;
-  if(this.world.partInfo(part).removable&&part!==this.returning&&!this.pump.removed.has(id)&&Math.hypot(dx,dy)>REMOVE_AT){
-   setRemoved(this.pump,id,true);this.order.push(id);this.seen=false;c.sound({type:'tear'});
+  if(this.world.partInfo(part).removable&&part!==this.returning&&!this.pump.removed.has(id)){
+   const out=Math.hypot(dx,dy)>REMOVE_AT;
+   if(out&&this.pending!==part){this.pending=part;c.sound({type:'click'});}
+   else if(!out&&this.pending===part)this.pending=-1;
   }
   return false;
  }
  released(part:number,c:Context){
   this.held=-1;this.dragDepth=0;
   const s=c.scene,id=this.ids[part] as PartId,i=part*3;
+  if(this.pending===part){this.pending=-1;setRemoved(this.pump,id,true);this.order.push(id);this.seen=false;c.sound({type:'tear'});}
   if(part===this.returning){this.returning=-1;setRemoved(this.pump,id,false);this.order=this.order.filter(p=>p!==id);this.seen=false;return;}
   if(!this.pump.removed.has(id))return;
   // The part stays where the hand left it and drifts to its slot, instead of the springs dragging it back through the object.
@@ -107,6 +114,7 @@ export class PerfumeBehaviour implements MirrorBehaviour<PerfumeSkin,PerfumeScen
  }
  settle(h:number,c:Context){
   const s=c.scene,o=s.partOffsets,rate=ease(Math.max(h,1e-6),PARK_TAU);
+  if(this.pending>=0&&this.held!==this.pending)this.pending=-1;
   // One body: left alone, a jolt or shock would slide the liquid through the glass.
   if(this.bottle>=0&&this.liquid>=0){const [from,to]=this.held===this.liquid?[this.liquid,this.bottle]:[this.bottle,this.liquid];for(let k=0;k<3;k++)o[to*3+k]=o[from*3+k];}
   for(let i=0;i<s.parked.length;i++){
@@ -119,10 +127,11 @@ export class PerfumeBehaviour implements MirrorBehaviour<PerfumeSkin,PerfumeScen
  reset(s:PerfumeScene){this.restore(s);}
  /** Every part back, full bottle. */
  restore(s=this.scene){
-  this.pump=createPump();this.order=[];this.seen=false;this.pressT=-1;this.rewindT=-1;this.time=1;this.driving=0;this.seekDegrees=0;this.lastSpray='none';this.wasStuck=false;this.wasPhase='rest';this.returning=this.held=-1;
+  this.pump=createPump();this.order=[];this.seen=false;this.pending=-1;this.pressT=-1;this.rewindT=-1;this.time=1;this.driving=0;this.seekDegrees=0;this.lastSpray='none';this.wasStuck=false;this.wasPhase='rest';this.returning=this.held=-1;
   if(s){s.pump=this.pump;s.parked.fill(0);s.parkFrom.fill(0);s.caption='';s.time=1;s.rewind=-1;}
  }
  private caption(){
+  if(this.pending>=0)return `Let go to take the ${this.world.partInfo(this.pending).title.toLowerCase()} out, or bring it back to keep it in.`;
   const s:PumpState=this.pump,last=this.order[this.order.length-1];
   if(last&&!this.seen)return `${this.partTitle(last)} is out. Press to see why it was there.`;
   const row=last?failures.find(f=>f.part===last):activeFailures(s).find(f=>f.part==='liquid');

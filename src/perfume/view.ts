@@ -15,8 +15,10 @@ import {Studio} from './studio';
 const UNIT=.05,CENTER=[0,47,0] as const;
 /** Past the zoom limit the camera can reach, Dive grows the model around the pump, fades the bottle and cuts everything open. */
 export const DIVE_FROM=1.8,DIVE_TO=2.4,DIVE_SCALE=1.3,DIVE_FOCUS_Y=80;
-/** Apart, the object is half as tall again, so the view eases back to keep it on stage. */
-const APART_SCALE=.7,APART_FOCUS_Y=76;
+/** Apart, the object is half as tall again, so the view eases back to keep it on stage: but only once the hands let go, so nothing slides out from under the fingers mid-tear. */
+const APART_SCALE=.7,APART_FOCUS_Y=76,APART_TAU=.35;
+/** Zoom at which the dive cue starts to show how near the threshold is. */
+export const DIVE_CUE=1.35;
 /** Seconds a 🤟 morph takes, and how long the cap waits on an untouched bottle before it settles back. */
 const MORPH_S=.9,CAP_REST_S=2.5;
 const moving=['actuator','nozzle','stem','piston','fluid-stem','fluid-duct','fluid-swirl','socket'];
@@ -43,6 +45,8 @@ export class PerfumeView extends MeshPartsView implements PerfumeWorld {
  readonly weights=new Float32Array([1,0,0]);private from=new Float32Array([1,0,0]);private target=0;private morphT=1;private worn=-1;
  private skin:Silhouette='tower';private lift=0;private restT=0;private catchWeight=0;private catching=false;private catchAt={x:0,y:0};private dryHand=-1;private kind:Spray='none';
  private slowFor=0;private lastDraw=0;
+ /** The explode share the framing follows: held while two pinches tear, then eased to the live value. */
+ private apart=0;private apartAt=0;private cue=document.createElement('div');
  private tips=new Map<number,{x:number;y:number}>();private seen=new WeakSet<MirrorShock>();
  private nozzle=new T.Vector3();private aim=new T.Vector3();private mix={deep:new T.Color(),light:new T.Color(),tint:new T.Color()};private at=new T.Vector3();
  constructor(host:HTMLElement){
@@ -53,6 +57,7 @@ export class PerfumeView extends MeshPartsView implements PerfumeWorld {
   this.body.add(this.spray.points,this.swirl.group,this.studio.floor);this.scene.add(this.scent.points,this.dry.points);
   this.html=new PerfumeOverlay(host);
   this.note.className='perfume-caption';this.note.setAttribute('aria-live','polite');host.parentElement?.append(this.note);
+  this.cue.className='perfume-dive-cue';this.cue.hidden=true;this.cue.setAttribute('aria-hidden','true');this.cue.innerHTML='<b></b><i><s></s><em></em></i>';host.parentElement?.append(this.cue);
  }
  // ---- Read by tests and the shell's debug handle.
  get droplets(){return this.spray.live;}
@@ -86,11 +91,31 @@ export class PerfumeView extends MeshPartsView implements PerfumeWorld {
   });
   // A palm held in the mist catches it instead of parting the pump.
   const c=this.catchWeight,fields=c>0?scene.fields.map((f:MirrorField)=>Math.hypot(f.x-this.catchAt.x,f.y-this.catchAt.y)<.6?{...f,strength:f.strength*(1-c)}:f):scene.fields;
-  super.draw({...scene,partOffsets:o,hidden,fields,skin:'glass',scale:(1+(DIVE_SCALE-1)*d)*(1-(1-APART_SCALE)*scene.explode),fade:d?{bottle:1-d*.68,liquid:1-d*.7}:undefined,
+  this.frame(scene,now);
+  super.draw({...scene,partOffsets:o,hidden,fields,skin:'glass',scale:(1+(DIVE_SCALE-1)*d)*(1-(1-APART_SCALE)*this.apart),fade:d?{bottle:1-d*.68,liquid:1-d*.7}:undefined,
    // The pose has moved the axis off world x=0, and the bores are narrower than that offset.
    slice:{amount:Math.max(scene.slice.amount,d),x:this.pose.x,yaw:cutYaw(this.pose)}} as never,now);
   if(this.note.textContent!==scene.caption)this.note.textContent=scene.caption;
+  this.diveCue();
   this.adapt(now);
+ }
+ /** Read by tests: the explode share the framing follows. */
+ get framedApart(){return this.apart;}
+ private frame(scene:PerfumeScene,now:number){
+  const dt=this.apartAt?Math.min(.1,Math.max(0,(now-this.apartAt)/1000)):0;this.apartAt=now;
+  const tearing=scene.hands.filter(h=>h.pose==='pinch').length>1;
+  if(!tearing)this.apart+=(scene.explode-this.apart)*(1-Math.exp(-dt/APART_TAU));
+  if(Math.abs(this.apart-scene.explode)<1e-3&&!tearing)this.apart=scene.explode;
+ }
+ /** As Scale nears the dive, a bar shows how much further to spread; past it, that the view is inside. */
+ private diveCue(){
+  const z=this.pose.zoom,near=clamp((z-DIVE_CUE)/(DIVE_FROM-DIVE_CUE),0,1),inside=this.dive,show=z>DIVE_CUE&&inside<.98;
+  if(this.cue.hidden===show)this.cue.hidden=!show;
+  if(!show)return;
+  const text=inside>0?'Diving inside the pump':near>.98?'Spread a little more to dive inside':'Keep spreading to dive inside',b=this.cue.querySelector('b')!;
+  if(b.textContent!==text)b.textContent=text;
+  (this.cue.querySelector('s') as HTMLElement).style.width=`${(near*100).toFixed(1)}%`;(this.cue.querySelector('em') as HTMLElement).style.width=`${(inside*100).toFixed(1)}%`;
+  this.cue.classList.toggle('is-in',inside>0);
  }
  /** Glass and soft wisps are fill-heavy: a machine that cannot keep up gets fewer pixels, never below half, rather than a stuttering hand. */
  private adapt(now:number){
@@ -106,7 +131,7 @@ export class PerfumeView extends MeshPartsView implements PerfumeWorld {
  private animate({dt,scene,view}:MeshFrame){
   const s=scene as unknown as PerfumeScene,{pump,parked,explode}=s,part=(id:string)=>view.part(id)!,travel=pump.depth*dims.strokeMm,bottomY=dims.pistonBottomY-travel,still=this.still.matches,time=s.time??1;
   // World y is fixed by the pose, so the focus moves here rather than in the saved view.
-  const k=view.body.scale.x;view.body.position.y-=(this.dive*(DIVE_FOCUS_Y-CENTER[1])+explode*(APART_FOCUS_Y-CENTER[1]))*k;
+  const k=view.body.scale.x;view.body.position.y-=(this.dive*(DIVE_FOCUS_Y-CENTER[1])+this.apart*(APART_FOCUS_Y-CENTER[1]))*k;
   const out=(id:string)=>pump.removed.has(id as PartId);
   for(const id of moving)part(id).motion.position.y=out(id)?0:-travel;
   const stretch=(id:string,from:number,top:number,rest:number)=>{const m=part(id).motion,s=Math.max(.001,(top-from)/(rest-from));m.scale.y=s;m.position.y=from*(1-s);};
@@ -247,5 +272,5 @@ export class PerfumeView extends MeshPartsView implements PerfumeWorld {
   }
   o.leaders(list,fade((s.explode-.3)/.4));
  }
- override dispose(){this.note.remove();this.html.dispose();this.studio.dispose();super.dispose();}
+ override dispose(){this.note.remove();this.cue.remove();this.html.dispose();this.studio.dispose();super.dispose();}
 }

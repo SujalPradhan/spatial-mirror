@@ -39,12 +39,14 @@ const atWorld=expr=>page.evaluate(async expr=>{
 const frames=n=>page.evaluate(n=>new Promise(r=>{let k=0;const f=()=>++k>=n?r():requestAnimationFrame(f);requestAnimationFrame(f);}),n);
 const until=(fn,arg)=>page.waitForFunction(fn,arg,{timeout:90000});
 const check=m=>{checks.push(m);console.log('ok',m);};
-/** Pinch a part where it is, draw it sideways in steps, let go. */
+/** Pinch a part where it is, draw it sideways in steps, let go: it is only offered while held, and comes out on letting go. */
 async function pullOut(id,dx=.32,steps=10){
  const from=await at(id);
  await feed([place('pinch',from.x,from.y)]);await posed('pinch');await page.waitForTimeout(150);
  for(let i=1;i<=steps;i++){await feed([place('pinch',from.x+dx*i/steps,from.y)]);await page.waitForTimeout(50);}
  await page.waitForTimeout(250);
+ assert.match(await read(()=>window.__perfumeStudio.caption),/Let go to take/);assert.equal(await read(id=>window.__perfumeStudio.pump.removed.has(id),id),false,'not out while held');
+ await quiet();await page.waitForFunction(id=>window.__perfumeStudio.pump.removed.has(id),id);
 }
 async function press(){await feed([place('thumbUp',.86,.5)]);await posed('thumbUp');await page.waitForFunction(()=>window.__perfumeStudio.pump.depth>.9);}
 const recenter=async()=>{await quiet();await page.locator('#perfume-recenter').click();await page.waitForFunction(()=>window.__perfumeStudio.pump.removed.size===0);};

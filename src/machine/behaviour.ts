@@ -1,4 +1,4 @@
-import {ease} from '../mirror/engine';
+import {ease,type MirrorAssist,type MirrorAssisted} from '../mirror/engine';
 import type {MirrorBehaviour,MirrorContext,WorldPoint} from '../mirror/contracts';
 import {clothTravel,FULL_SPM,machinePose,outcomeOf,TIMING,type Stitch} from './model';
 import {bodyParts,followers,UNIT} from './parts';
@@ -17,9 +17,15 @@ const FREEZE=6,FREEZE_CALM=1.2,HS_TAU=.15;
 /** Free motion. The cloth slides opposite the hand, so the holes trace the hand's own path. */
 export const EMBROIDERY_CAP=400,DRAW_SCALE=2.2,DRAW_PITCH=1.05,HOOP_R=44;
 const DRAW_TAU=.45,DRAW_LINGER=2.5,STEER_TAU=.07,STITCH_LEN=1.8,DRAW_MAX=14*REV,REGULATE_TAU=.12,RECENTER_TAU=.8,DRAW_FOCUS=[0,1.6,0],JUMP=12;
-/** Top thread tension: world units of pinch travel to the full range, and where it snaps. */
-/** Frames after a pinch forms in which it may still take the thread, since a pose settles over a few. */
-const GRACE=8,LET_GO=.6,TENSION_GAIN=.35,TENSION_TAU=.08,SNAP=1,RELAX_TAU=.6,BALANCED=.5,OFF_BALANCE=.06;
+/** Top thread tension: change per stage height of pinch travel (per world unit where the world has no stage), and where it snaps. */
+/** Seconds after a pinch forms in which it may still take the thread, since a pose settles over a few frames. */
+const GRACE_S=.25,LET_GO=.6,TENSION_STAGE=3,TENSION_GAIN=.35,TENSION_TAU=.08,SNAP=1,RELAX_TAU=.6,BALANCED=.5,OFF_BALANCE=.06;
+/** Screen pixels: how near a pinch must land to the thread, and how near to still win over a removable part under it. */
+export const THREAD_REACH=60,THREAD_TIE=26;
+/** Free motion starts only from a deliberate open palm: held this long, nearly still, away from anything to take. */
+export const ARM_S=.4;
+const ARM_STILL=1.6,ARM_SPEED_TAU=.12,HOT_TAU=.12;
+const ASSIST:MirrorAssist={grace:.5,regrab:.6,lock:.3};
 /** The plate, the strip of cloth and all beneath: faded out while drawing, so the hooped fabric reads alone. */
 const UNDER=['hook','caseShell','bobbinCase','bobbin','bobbinRims','lowerShaft','feedDog','plate','cloth','clothMarks'];
 const UNPICK_LIFE=1.4,UNPICK_KEEP=6;
@@ -29,8 +35,9 @@ export const STITCH_CAP=24;
 const PULL_OUT=.9,CLOSE_TAU=.55;
 /** Zoom past the first closes in on the plate, back past the second returns to the whole machine. */
 export const CLOSE_AT=1.35,WHOLE_AT=.85;
-const CLOSE_SCALE=3.15,PUSH=.32,INTRO=1.4,REDUCED_START=1;
-const WHOLE_FOCUS=[64,46,0],CLOSE_FOCUS=[0,-17,0],LOOP_FOCUS=[-2,-11,-1];
+/** The close-up sits a little lower and wider than the plate's own middle, so the thread and the hook come where a seated hand reaches easily. */
+const CLOSE_SCALE=2.8;
+const WHOLE_FOCUS=[64,46,0],CLOSE_FOCUS=[0,-4,0];
 export const TIMING_STEPS=[{offset:0,label:'on time'},{offset:30,label:'30° late'},{offset:-25,label:'25° early'}] as const;
 const beats:Record<string,string>={thrown:'The needle rises and the slack thread bulges into a loop',carried:'The hook point enters the loop and carries it round the bobbin case',casting:'The take-up pulls the loop off the back of the case',pulling:'The lock is drawn up into the cloth'};
 const faults:Record<string,string>={
@@ -49,15 +56,20 @@ export const emptyEmbroidery=():Embroidery=>({x:new Float32Array(EMBROIDERY_CAP)
 type Context=MirrorContext<MachineSkin,MachineSceneExtra,MachineSound>;
 
 /** The crank, the stitch record, the framing and every hand effect. The model is pure, so everything that depends on history lives here. */
-export class MachineBehaviour implements MirrorBehaviour<MachineSkin,MachineSceneExtra,MachineSound> {
- crank=0;omega=0;idle=false;reduced=false;removed:Removable[]=[];timing=0;stitches:Stitch[]=[];count=0;close=false;travel=clothTravel(0);caption='';
+export class MachineBehaviour implements MirrorBehaviour<MachineSkin,MachineSceneExtra,MachineSound>,MirrorAssisted {
+ readonly assist=ASSIST;
+ /** The page opens on the close-up and stays there: framing changes only when the viewer asks. */
+ crank=0;omega=0;idle=false;reduced=false;removed:Removable[]=[];timing=0;stitches:Stitch[]=[];count=0;close=true;travel=clothTravel(0);caption='';
+ /** 0 to 1 while an open palm counts in to free motion, and where it is. */
+ arming=0;
  /** Free motion: cloth offset, whether a hand steers it, and every hole sewn. */
  ox=0;oz=0;drawing=false;embroidery=emptyEmbroidery();
  tension=BALANCED;broken=false;held:WorldPoint|null=null;
  highSpeed=0;realMs=0;exposure=0;freezeLeft=0;flashes=0;unpicked:{x:number;age:number}[]=[];
- private driving=0;private started=false;private mark=0;private lastCrank=0;private stirring=0;private index=0;private intro=INTRO;private u=0;private lastZoom=NaN;
+ private driving=0;private started=false;private mark=0;private lastCrank=0;private stirring=0;private index=0;private u=1;private lastZoom=NaN;
  private tilt=0;private linger=0;private anchor:{x:number;y:number;ox:number;oz:number}|null=null;private steer=0;private session=false;
- private threadHand:number|null=null;private threadY=0;private threadFrom=BALANCED;private pinching=new Map<number,number>();private grabbedRemovable=false;private letGo=0;
+ private threadHand:number|null=null;private threadY=NaN;private threadFrom=BALANCED;private pinching=new Map<number,number>();private grabbedRemovable=false;private letGo=0;
+ private hot=0;private hotTarget=0;private palm:{x:number;y:number}|null=null;private palmSpeed=0;private armAt:WorldPoint|null=null;private loop=0;
  private painting=false;private saved=0;private calm=0;private shown=0;private strobeClock=0;private explode=0;
  private removable=new Map<number,Removable>();private ids:string[]=[];
  constructor(private world:MachineWorld){}
@@ -67,7 +79,7 @@ export class MachineBehaviour implements MirrorBehaviour<MachineSkin,MachineScen
  get spm(){return this.highSpeed>.5?FULL_SPM:Math.round(this.omega/REV*60);}
  get strobing(){return !this.reduced&&this.freezeLeft<=0&&this.highSpeed<.5&&!this.drawing&&Math.abs(this.omega)>STROBE_FROM;}
  get frozen(){return this.freezeLeft>0;}
- initialScene():MachineSceneExtra{return {machine:{...machinePose(0),stitches:this.stitches},options:{hookTimingOffset:0,removed:[]},close:0,scale:1,focus:[...WHOLE_FOCUS] as [number,number,number],draw:0,cloth:[0,0],embroidery:this.embroidery,tension:{value:BALANCED,held:null,broken:false},highSpeed:0,realMs:0,exposure:0,freeze:0,unpicked:this.unpicked,hidden:new Set(),fade:{}};}
+ initialScene():MachineSceneExtra{return {machine:{...machinePose(0),stitches:this.stitches},options:{hookTimingOffset:0,removed:[]},close:1,scale:CLOSE_SCALE,focus:[...CLOSE_FOCUS] as [number,number,number],aims:[],threadHot:0,loopLight:0,draw:0,cloth:[0,0],embroidery:this.embroidery,tension:{value:BALANCED,held:null,broken:false},highSpeed:0,realMs:0,exposure:0,freeze:0,unpicked:this.unpicked,hidden:new Set(),fade:{}};}
  fit(n:number){
   this.removable.clear();this.ids=[];
   for(let i=0;i<n;i++){const p=this.world.partInfo(i);this.ids[i]=p.id;if(p.removable)this.removable.set(i,p.id as Removable);}
@@ -79,10 +91,27 @@ export class MachineBehaviour implements MirrorBehaviour<MachineSkin,MachineScen
  released(part:number){if(this.removable.has(part))this.grabbedRemovable=false;}
  /** A pinch on the thread holds the part behind it still. */
  dragged(){return this.threadHand!==null;}
+ /** Screen pixels from a point to the top thread, judged together with any removable part under it: the thread wins near-ties. */
+ private reach(p:WorldPoint){
+  const w=this.world,d=w.threadDistance?w.threadDistance(p):w.onThread?.(p)?0:Infinity;
+  if(!(d<THREAD_REACH))return null;
+  if(d>THREAD_TIE&&this.removable.has(w.partAt(p)))return null;
+  return d;
+ }
+ aim(p:WorldPoint){
+  if(this.frozen||this.threadHand!==null||this.reach(p)===null)return null;
+  this.hotTarget=1;
+  return this.world.threadNear?.(p)??p;
+ }
+ claim(hand:number,p:WorldPoint){
+  if(this.frozen||this.threadHand!==null||this.reach(p)===null)return false;
+  this.take(hand);return true;
+ }
+ private take(hand:number){this.threadHand=hand;this.letGo=0;this.threadY=NaN;this.threadFrom=this.tension;}
  advance(h:number,c:Context){
   this.started=true;const from=this.lastCrank;
   this.clapped(h,c);this.thread(h,c);this.steering(h,c);this.framing(h,c);this.spin(h,c);this.tally(c);
-  if(this.intro>0){this.intro-=h;if(this.intro<=0)this.close=true;}
+  this.hot+=(this.hotTarget-this.hot)*ease(Math.max(h,1e-6),HOT_TAU);this.hotTarget=this.threadHand!==null?1:0;
   this.painting=c.scene.skin==='paint';this.exposure=this.painting?this.exposure+Math.abs(this.crank-from):0;
   this.strobeClock+=h;
   if(!this.strobing){this.shown=this.crank;this.strobeClock=0;}
@@ -104,12 +133,15 @@ export class MachineBehaviour implements MirrorBehaviour<MachineSkin,MachineScen
   const s=c.scene,o=s.options,m=s.machine,beat=throwBeat(mod(this.crank,REV))*(1-smooth(Math.abs(this.omega)/(.6*REV)))*(1-this.tilt);
   o.hookTimingOffset=this.timingOffset;o.removed=this.removed;
   Object.assign(m,machinePose(this.shown,o));m.clothTravel=this.travel-this.ox;m.stitches=this.drawing?this.freeStitch():this.stitches;
-  const u=this.u,push=beat*u,d=smooth(this.tilt);
+  const u=this.u,d=smooth(this.tilt);
+  // The loop throw is lit, not zoomed: the camera holds still while the thread does its work.
+  this.loop=beat*u;s.loopLight=this.loop;s.threadHot=this.hot;
   s.close=u;s.draw=this.tilt;s.cloth[0]=this.ox;s.cloth[1]=this.oz;s.embroidery=this.embroidery;
   s.tension.value=this.tension;s.tension.held=this.held;s.tension.broken=this.broken;
   s.highSpeed=this.highSpeed;s.realMs=this.realMs;s.exposure=this.exposure;s.freeze=this.frozen?1:0;s.unpicked=this.unpicked;
-  s.scale=mix(mix(1,CLOSE_SCALE,u*u*(3-2*u))*(1+PUSH*push),DRAW_SCALE,d);
-  for(let i=0;i<3;i++)s.focus[i]=mix(mix(mix(WHOLE_FOCUS[i],CLOSE_FOCUS[i],u),LOOP_FOCUS[i],push*.8),DRAW_FOCUS[i],d);
+  s.scale=mix(mix(1,CLOSE_SCALE,u*u*(3-2*u)),DRAW_SCALE,d);
+  for(let i=0;i<3;i++)s.focus[i]=mix(mix(WHOLE_FOCUS[i],CLOSE_FOCUS[i],u),DRAW_FOCUS[i],d);
+  if(this.arming>0&&this.armAt&&!this.drawing)s.aims?.push({kind:'arming',x:this.armAt.x,y:this.armAt.y,z:this.armAt.z,target:null,amount:this.arming});
   const fade=1-smooth((u-.08)/.5);s.hidden.clear();
   for(const id of this.removed)s.hidden.add(id);
   for(const [id,leader] of Object.entries(followers))if(s.hidden.has(leader))s.hidden.add(id);
@@ -123,7 +155,8 @@ export class MachineBehaviour implements MirrorBehaviour<MachineSkin,MachineScen
  }
  reset(s:MachineScene){
   this.travel=clothTravel(0);this.crank=this.omega=this.driving=this.mark=this.lastCrank=this.count=this.index=this.stirring=this.u=this.timing=this.shown=0;
-  this.removed=[];this.stitches=[];this.started=false;this.close=false;this.intro=INTRO;this.lastZoom=NaN;s.hidden.clear();
+  this.removed=[];this.stitches=[];this.started=false;this.close=true;this.u=1;this.lastZoom=NaN;s.hidden.clear();
+  this.arming=0;this.armAt=this.palm=null;this.palmSpeed=0;this.hot=this.hotTarget=0;
   this.ox=this.oz=this.tilt=this.linger=this.steer=this.highSpeed=this.realMs=this.exposure=this.freezeLeft=this.calm=this.flashes=this.strobeClock=0;
   this.drawing=this.session=this.broken=false;this.anchor=null;this.embroidery=emptyEmbroidery();this.tension=BALANCED;this.held=null;this.threadHand=null;this.pinching.clear();this.unpicked.length=0;
  }
@@ -141,12 +174,12 @@ export class MachineBehaviour implements MirrorBehaviour<MachineSkin,MachineScen
  }
  remove(id:Removable,c?:Context){
   if(this.removed.includes(id))return;
-  this.removed=[...this.removed,id];this.close=true;this.intro=0;c?.sound({type:'fault'});
+  this.removed=[...this.removed,id];c?.sound({type:'fault'});
  }
  /** Puts every part back, rethreads and retimes the hook, and lets time run. Stitches already sewn stay in the cloth. */
- restore(){this.removed=[];this.timing=0;this.close=true;this.intro=0;this.broken=false;this.tension=BALANCED;if(this.frozen)this.resume();}
- cycleTiming(){this.timing=(this.timing+1)%TIMING_STEPS.length;this.intro=0;this.close=true;return TIMING_STEPS[this.timing];}
- setClose(on:boolean){this.close=on;this.intro=0;}
+ restore(){this.removed=[];this.timing=0;this.broken=false;this.tension=BALANCED;if(this.frozen)this.resume();}
+ cycleTiming(){this.timing=(this.timing+1)%TIMING_STEPS.length;return TIMING_STEPS[this.timing];}
+ setClose(on:boolean){this.close=on;}
  /** Stops everything mid-stitch; the motor's speed is kept for when time runs again. */
  freeze(){this.freezeLeft=FREEZE;this.saved=this.omega;this.omega=0;this.driving=0;this.shown=this.crank;}
  resume(){this.freezeLeft=0;this.omega=this.saved;this.calm=FREEZE_CALM;}
@@ -160,25 +193,27 @@ export class MachineBehaviour implements MirrorBehaviour<MachineSkin,MachineScen
  private describeNow(stage:string,feed:string){
   if(this.frozen)return `Time stopped at ${Math.round(mod(this.crank,REV))}°. Clap again, or wait, to let it run`;
   if(this.broken)return 'Snapped: pulled past what the thread can take. Let go to rethread';
-  if(this.threadHand!==null){const t=this.tension;return t<.3?'Slack: the loop balloons and the lock sinks under the cloth, leaving loops below':t>.72?'Tight: the lock is dragged up to the top and the cloth puckers':'Balanced: the lock sits inside the cloth, hidden between the plies';}
+  if(this.threadHand!==null)return this.tensionNote();
   if(this.drawing||this.tilt>.5)return 'Free motion: the feed dog drops and your hand steers the cloth. It slides the other way, so the needle draws your path';
   if(this.highSpeed>.5)return 'High-speed camera: full speed filmed at 50 times, so a whole stitch takes 3.8 seconds';
   if(this.painting)return 'Light painting: every working point leaves its path. Needle white, crank pin violet, take-up gold, hook point orange, feed dog green, the loop magenta';
   if(this.strobing)return 'Strobe at 816 flashes a minute, a hair faster than the crank, so the machine seems to creep backwards';
   if(this.omega<-REST&&!this.stirring)return 'Unpicking: run backwards, each lock is pulled back out of the cloth';
   if(this.explode>.3)return 'Apart and still running: the glowing links show which part drives which';
+  // Let go, the tension stays where the hand left it.
+  if(Math.abs(this.tension-BALANCED)>OFF_BALANCE)return `${this.tensionNote()}. Pinch the thread again to change it`;
   const kind=outcomeOf(this.options);
   if(kind==='skipped'){const o=this.timingOffset;return o>0?`Hook ${o}° late: the loop has drawn shut before the point arrives, so the stitch skips`:`Hook ${-o}° early: the point passes before the loop has opened, so the stitch skips`;}
   if(faults[kind])return faults[kind];
   if(this.u<.5)return '';
   return beats[stage]??(feed==='forward'?'The feed dog walks the cloth one stitch':'');
  }
+ private tensionNote(){const t=this.tension;return t<.3?'Slack: the loop balloons and the lock sinks under the cloth, leaving loops below':t>.72?'Tight: the lock is dragged up to the top and the cloth puckers':'Balanced: the lock sits inside the cloth, hidden between the plies';}
+ /** Only Scale crossing a threshold, or the corner control, changes the framing; nothing moves the camera by itself. */
  private framing(h:number,c:Context){
   const zoom=c.view.zoom,last=this.lastZoom;this.lastZoom=zoom;
   if(last<CLOSE_AT&&zoom>=CLOSE_AT)this.setClose(true);
   else if(last>WHOLE_AT&&zoom<=WHOLE_AT)this.setClose(false);
-  // With motion reduced there is no opening move: the page simply starts on the close-up.
-  if(!this.idle&&this.intro===INTRO&&Number.isNaN(last)){this.intro=0;this.close=true;this.u=REDUCED_START;}
   this.u+=(+this.close-this.u)*ease(Math.max(h,1e-6),CLOSE_TAU);
   if(Math.abs(+this.close-this.u)<.002)this.u=+this.close;
   this.tilt+=(+(this.drawing||this.linger>0)-this.tilt)*ease(Math.max(h,1e-6),DRAW_TAU);
@@ -190,32 +225,54 @@ export class MachineBehaviour implements MirrorBehaviour<MachineSkin,MachineScen
   if(!c.scene.shocks.some(s=>s.age===0))return;
   if(this.frozen)this.resume();else{this.freeze();this.drawing=false;this.anchor=null;this.linger=0;}
  }
- /** A single pinch that lands on the top thread holds it: up pulls it tighter against the discs, down feeds it slack. */
+ /** Height of a point on the stage, 0 at the top, or its world height where the world has no stage. */
+ private rise(p:WorldPoint){const at=this.world.stageOf?.(p);return at?-at.y*TENSION_STAGE:p.y*TENSION_GAIN;}
+ /** A single pinch that lands on the top thread holds it: up pulls it tighter against the discs, down feeds it slack. Let go, it keeps the tension it was left at. */
  private thread(h:number,c:Context){
   const pinches=c.scene.hands.filter(x=>x.pose==='pinch'),one=pinches.length===1?pinches[0]:null;
   // A pinch flickers for a frame or two as fingers move; the thread is only let go once it has been gone a moment.
-  if(this.threadHand!==null&&(!one||one.id!==this.threadHand)&&(this.letGo+=h)>LET_GO){this.threadHand=null;this.held=null;this.broken=false;}
+  if(this.threadHand!==null&&(!one||one.id!==this.threadHand)&&(this.letGo+=h)>LET_GO){
+   this.threadHand=null;this.held=null;
+   // Snapped thread is rethreaded at the discs' own tension.
+   if(this.broken){this.broken=false;this.relaxing=true;}
+  }
   if(one&&one.id===this.threadHand)this.letGo=0;
   if(one&&one.joints.length>8){
    const a=one.joints[4],b=one.joints[8],p={x:(a.x+b.x)/2,y:(a.y+b.y)/2,z:(a.z+b.z)/2};
-   if(this.threadHand===null&&(this.pinching.get(one.id)??0)<GRACE&&!this.grabbedRemovable&&!this.frozen&&!this.removable.has(this.world.partAt(p))&&this.world.onThread?.(p)){this.threadHand=one.id;this.letGo=0;this.threadY=p.y;this.threadFrom=this.tension;this.close=true;this.intro=0;}
+   // The engine offers the landing first; this catches a pinch whose pose settled a moment after its fingers met the thread.
+   if(this.threadHand===null&&(this.pinching.get(one.id)??0)<GRACE_S&&!this.grabbedRemovable&&!this.frozen&&this.reach(p)!==null)this.take(one.id);
    if(this.threadHand===one.id){
-    this.held=p;one.active=true;
-    const target=clamp(this.threadFrom+(p.y-this.threadY)*TENSION_GAIN,0,SNAP+.05);
+    this.held=p;one.active=true;this.relaxing=false;
+    if(Number.isNaN(this.threadY))this.threadY=this.rise(p);
+    const target=clamp(this.threadFrom+this.rise(p)-this.threadY,0,SNAP+.05);
     if(!this.broken)this.tension+=(target-this.tension)*ease(Math.max(h,1e-6),TENSION_TAU);
     if(!this.broken&&this.tension>=SNAP-.01){this.broken=true;this.tension=SNAP;c.sound({type:'snap'});}
    }
   }
-  if(this.threadHand===null)this.tension+=(BALANCED-this.tension)*ease(Math.max(h,1e-6),RELAX_TAU);
-  const was=this.pinching;this.pinching=new Map(pinches.map(x=>[x.id,(was.get(x.id)??0)+1]));
+  if(this.relaxing){this.tension+=(BALANCED-this.tension)*ease(Math.max(h,1e-6),RELAX_TAU);if(Math.abs(this.tension-BALANCED)<.002){this.tension=BALANCED;this.relaxing=false;}}
+  const was=this.pinching;this.pinching=new Map(pinches.map(x=>[x.id,(was.get(x.id)??0)+h]));
  }
- /** One open hand steers the cloth while the stitch regulator runs the needle at the pace the hand moves. */
+ private relaxing=false;
+ /** One open hand steers the cloth while the stitch regulator runs the needle at the pace the hand moves. It starts only from a palm held open and still, away from the thread and the parts that come out, so reaching for something never tips the view. */
  private steering(h:number,c:Context){
   const s=c.scene,open=s.hands.filter(x=>x.pose==='open').length===1;let field=null;
   if(open)for(const f of s.fields)if(!field||f.strength>field.strength)field=f;
-  const on=!!field&&field.strength>.5&&!this.frozen;
+  if(field&&h>0){
+   const was=this.palm;this.palm={x:field.x,y:field.y};
+   if(was)this.palmSpeed+=(Math.hypot(field.x-was.x,field.y-was.y)/h-this.palmSpeed)*ease(h,ARM_SPEED_TAU);
+  }else if(!field){this.palm=null;this.palmSpeed=0;}
+  if(this.drawing||!field||this.frozen)this.arming=0;
+  else{
+   // Judged at the fingertip, where a reaching hand arrives first.
+   const at={x:field.x,y:field.y,z:field.z},hand=s.hands.find(x=>x.pose==='open'),tip=hand&&hand.joints.length>8?hand.joints[8]:at;
+   const clear=this.reach(tip)===null&&!this.removable.has(this.world.partAt(tip));
+   this.armAt=at;
+   // A second hand in view is doing something else: Scale, Tear or a clap, so the count waits.
+   this.arming=clear&&s.hands.length===1&&this.palmSpeed<ARM_STILL?Math.min(1,this.arming+h/ARM_S):0;
+  }
+  const on=!!field&&field.strength>.5&&!this.frozen&&(this.drawing||this.arming>=1);
   if(on&&field){
-   if(!this.drawing){this.anchor={x:field.x,y:field.y,ox:this.ox,oz:this.oz};this.session=true;this.close=true;this.intro=0;if(!this.embroidery.count)this.embroidery.hoop=[this.travel-this.ox,-this.oz];}
+   if(!this.drawing){this.anchor={x:field.x,y:field.y,ox:this.ox,oz:this.oz};this.session=true;this.arming=0;if(!this.embroidery.count)this.embroidery.hoop=[this.travel-this.ox,-this.oz];}
    const a=this.anchor!,k=UNIT*DRAW_SCALE,hoop=this.embroidery.hoop;
    let tx=a.ox-(field.x-a.x)/k,tz=a.oz+(field.y-a.y)/(k*Math.sin(DRAW_PITCH));
    const dx=this.travel-tx-hoop[0],dz=-tz-hoop[1],r=Math.hypot(dx,dz);

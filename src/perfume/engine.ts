@@ -11,7 +11,7 @@ export class PerfumeEngine extends MirrorEngine<PerfumeSkin,PerfumeSceneExtra,Pe
  get pump(){return this.mechanism.pump;}
  get lastSpray(){return this.mechanism.lastSpray;}
  get caption(){return this.scene.caption;}
- restore(){this.mechanism.restore(this.scene);}
+ restore(){this.letGo();this.mechanism.restore(this.scene);}
  override get idle(){return this.mechanism.idle;}
  // Idle here means the phone is not holding the pump, so leaving its pump tool lets go.
  override set idle(on:boolean){if(on&&!this.mechanism.idle)this.mechanism.seekDegrees=0;this.mechanism.idle=on;}

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {EMBROIDERY_CAP,FULL,SLOW,STITCH_CAP,throwBeat} from '../src/machine/behaviour';
+import {ARM_S,EMBROIDERY_CAP,FULL,SLOW,STITCH_CAP,throwBeat} from '../src/machine/behaviour';
 import {machineSkins} from '../src/machine/contracts';
 import {MachineEngine} from '../src/machine/engine';
 import {initialMachine,validateMachine} from '../src/machine/state';
@@ -67,18 +67,30 @@ test('idle runs slowly and lingers on the loop throw; off, it does not move',()=
  u.m.crank=210;const a=u.m.crank;u.step(10);const slow=u.m.crank-a;u.m.crank=30;u.step(10);assert.ok(slow<(u.m.crank-30)*.5);
  assert.equal(throwBeat(100),0);assert.equal(throwBeat(212),1);assert.equal(throwBeat(300),0);
 });
-test('zoom crosses into the close-up and back out, with a margin between',()=>{
- const t=fresh();t.e.idle=true;t.step();assert.equal(t.m.close,false);
- t.view.zoom=1.4;t.step();assert.equal(t.m.close,true);
- t.view.zoom=1;t.step();assert.equal(t.m.close,true);
+test('zoom crosses out to the whole machine and back in, with a margin between',()=>{
+ const t=fresh();t.e.idle=true;t.step();assert.equal(t.m.close,true,'the page opens on the close-up');
  t.view.zoom=.8;t.step();assert.equal(t.m.close,false);
- t.view.zoom=1;t.step(200);assert.equal(t.m.close,false,'the opening move does not override the viewer');
+ t.view.zoom=1;t.step();assert.equal(t.m.close,false);
+ t.view.zoom=1.4;t.step();assert.equal(t.m.close,true);
+ t.view.zoom=1;t.step(200);assert.equal(t.m.close,true,'nothing changes the framing by itself');
 });
-test('a removal is hidden, and goes close to show the consequence',()=>{
+test('with nothing touched the camera never moves: no opening zoom, no breathing on the loop throw',()=>{
+ for(const idle of [true,false]){
+  const t=fresh();t.e.idle=idle;const first=t.step().scene,scale=first.scale,focus=[...first.focus];
+  for(let i=0;i<5*50;i++){const s=t.step().scene;assert.equal(s.scale,scale,`scale at step ${i}`);assert.deepEqual([...s.focus],focus);}
+  if(idle)assert.ok(t.m.count>0||t.m.crank>30,'the idle motor still sews');
+ }
+});
+test('the loop throw is lit instead of zoomed',()=>{
+ const t=fresh();t.e.idle=true;let lit=0;for(let i=0;i<600;i++)lit=Math.max(lit,t.step().scene.loopLight);
+ assert.ok(lit>.5,String(lit));
+});
+test('a removal is hidden, and the framing stays where the viewer left it',()=>{
  const t=fresh();t.e.idle=true;t.step();t.m.setClose(false);
  const i=machineParts.findIndex(p=>p.id==='takeUp'),out=t.step(),s=out.scene;
  s.partGlow[i]=1;s.partOffsets[i*3]=1;t.m.settle(.02,(t.e as any).context);
- assert.deepEqual(t.m.removed,['takeUp']);assert.equal(t.m.close,true);assert.ok(t.step().scene.hidden.has('takeUp'));
+ assert.deepEqual(t.m.removed,['takeUp']);assert.equal(t.m.close,false);assert.ok(t.step().scene.hidden.has('takeUp'));
+ t.m.restore();assert.equal(t.m.close,false,'putting parts back does not move the camera either');t.m.cycleTiming();assert.equal(t.m.close,false);
  t.m.remove('bobbin');const hidden=t.step().scene.hidden;assert.ok(hidden.has('bobbin')&&hidden.has('bobbinRims'),'its rims go with it');
 });
 test('saved state is validated and allow-listed',()=>{
@@ -97,7 +109,7 @@ test('three skins: solid, x-ray, light painting, and painting exposes the crank 
  assert.equal(t.step().scene.skin,'paint');sew(t,1);assert.ok(t.step().scene.exposure>=330,'a turn exposed');
 });
 test('one open hand steers the cloth the other way, and the holes trace the hand',()=>{
- const t=fresh();for(let i=0;i<20;i++)live(t,[hand('open',0,0)]);
+ const t=fresh();for(let i=0;i<40;i++)live(t,[hand('open',0,0)]);
  assert.equal(t.m.drawing,true);assert.ok(Math.abs(t.m.omega)<1,'the regulator holds the needle while the hand is still');
  for(let i=1;i<=120;i++)live(t,[hand('open',i*.01,0)]);
  assert.ok(t.m.ox<-10,'cloth slides opposite the hand');assert.ok(t.m.embroidery.count>5,'stitches while moving');
@@ -105,8 +117,20 @@ test('one open hand steers the cloth the other way, and the holes trace the hand
  assert.equal(t.m.stitches.length,0,'free motion leaves the straight seam alone');
  for(let i=0;i<40;i++)live(t,[]);assert.equal(t.m.drawing,false);assert.ok(t.step().scene.draw>.9,'the view lingers on the drawing');
 });
+test('free motion starts only from a palm held still, never from a reaching hand',()=>{
+ const t=fresh(),scale=t.step().scene.scale;
+ for(let i=0;i<120;i++){const out=live(t,[hand('open',-2+i*.04,Math.sin(i/9)*.5)]);assert.equal(out.scene.scale,scale);}
+ assert.equal(t.m.drawing,false,'a moving open hand is a reach');assert.equal(t.m.arming,0);
+ let from=-1,to=-1,ring=0;
+ for(let i=0;i<120&&to<0;i++){
+  const out=live(t,[hand('open',2.76,.2)]);if(from<0&&t.m.arming>0)from=i;if(t.m.drawing)to=i;
+  for(const a of out.scene.aims??[])if(a.kind==='arming')ring=Math.max(ring,a.amount);
+ }
+ assert.ok(from>=0&&to>0,`${from} ${to}`);assert.ok((to-from)/60>=ARM_S-.04,'held still for the count-in first');assert.ok(ring>.8,'the fill ring is drawn as it counts');
+ threaded=true;try{const u=fresh();for(let i=0;i<60;i++)live(u,[hand('open',0,0)]);assert.equal(u.m.drawing,false,'a palm on the thread is reaching for it');}finally{threaded=false;}
+});
 test('free motion keeps the newest 400 holes',()=>{
- const t=fresh();for(let i=0;i<10;i++)live(t,[hand('open',0,0)]);
+ const t=fresh();for(let i=0;i<40;i++)live(t,[hand('open',0,0)]);
  for(let i=0;i<4000;i++)live(t,[hand('open',Math.sin(i/30)*1.2,Math.cos(i/23)*.8)]);
  assert.equal(t.m.embroidery.count,EMBROIDERY_CAP);assert.ok(t.m.count>EMBROIDERY_CAP);
 });
@@ -121,6 +145,27 @@ test('a pinch on the thread sets its tension, the stitches follow, and too far s
   sew(t,1);live(t,[hand('pinch',0,2.4)]);assert.equal(t.m.stitches.at(-1)!.kind,'skipped','no top thread, no stitch');
   for(let i=0;i<120;i++)live(t,[]);assert.equal(t.m.broken,false,'letting go rethreads');assert.ok(Math.abs(t.m.tension-.5)<.1,'and the discs take over');
  }finally{threaded=false;}
+});
+test('holding the thread leaves the camera alone, and letting go keeps the tension',()=>{
+ threaded=true;
+ try{
+  const t=fresh(),before=t.step().scene,scale=before.scale,close=t.m.close;
+  live(t,[hand('pinch',0,0)]);for(let i=1;i<=20;i++){const s=live(t,[hand('pinch',0,i*.04)]).scene;assert.equal(s.scale,scale);}
+  assert.ok(t.m.held,'held');assert.equal(t.m.close,close);const kept=t.m.tension;assert.ok(kept>.7,String(kept));
+  for(let i=0;i<200;i++)live(t,[]);assert.equal(t.m.held,null);assert.ok(Math.abs(t.m.tension-kept)<1e-9,'released, the tension stays');
+  assert.match(t.m.caption,/Tight.*again/);
+  sew(t,1);assert.ok(t.m.stitches.at(-1)!.tension!>.7,'and the next stitches are sewn at it');
+  t.m.restore();assert.equal(t.m.tension,.5,'Recenter puts it back');
+ }finally{threaded=false;}
+});
+test('the thread wins a near-tie with a removable part, and a reticle snaps to it as fingers close',()=>{
+ const takeUp=machineParts.findIndex(p=>p.id==='takeUp');let d=20;
+ const w={...world,partAt:()=>takeUp,threadDistance:()=>d,threadNear:()=>({x:9,y:9,z:0})};
+ const e=new MachineEngine(w),view=initialMachine().view,m=e.machine;
+ assert.deepEqual(m.aim({x:0,y:0,z:0}),{x:9,y:9,z:0});assert.equal(m.claim(1,{x:0,y:0,z:0}),true);assert.equal(e.step(frame,.02,view,false).scene.label,null);
+ const f=new MachineEngine(w).machine;d=40;assert.equal(f.aim({x:0,y:0,z:0}),null,'clearly on the part, the part');assert.equal(f.claim(1,{x:0,y:0,z:0}),false);
+ const g=new MachineEngine({...w,partAt:()=>-1}).machine;assert.equal(g.claim(1,{x:0,y:0,z:0}),true,'40 px from the thread with nothing else there still catches it');
+ d=70;assert.equal(new MachineEngine({...w,partAt:()=>-1}).machine.claim(1,{x:0,y:0,z:0}),false);
 });
 test('a pinch off the thread does not take it',()=>{const t=fresh();for(let i=0;i<20;i++)live(t,[hand('pinch',0,-i*.05)]);assert.equal(t.m.tension,.5);assert.equal(t.m.held,null);});
 test('a clap stops time mid-stitch; another, or six seconds, lets it run',()=>{

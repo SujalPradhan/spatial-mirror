@@ -38,9 +38,9 @@ async function pull(id,close){
 try{
  await page.goto(base+'/machine');await until(()=>window.__machineStudio?.ready&&window.__machineStudio.owns&&document.querySelector('#machine-caption'));
  assert.match(await page.title(),/Sewing machine/);
- // Idle motor and the opening move run with nothing touched.
+ // The idle motor runs with nothing touched, on the close-up from the first frame: nothing moves the camera by itself.
  await until(()=>__machineStudio.engine.position>5);
- await until(()=>__machineStudio.machine.close);
+ assert.equal(await get(()=>__machineStudio.machine.close),true);
  // Hands go straight to the shell, as the tutorial test does, but with no camera running: a live probe would interleave its own frames and drop pose events.
  // With no video the stage maps 1:1, and the tracker's default aspect is 16:9.
  aspect=16/9;stageAspect=16/9;
@@ -52,7 +52,8 @@ try{
  await until(()=>__machineStudio.state.view.zoom>=1.35);await clear();assert.equal(await get(()=>__machineStudio.machine.close),true);
  await feed([place('fist',.2),place('fist',.8)]);await until(()=>__machineStudio.frame.hands.filter(h=>h.pose==='fist').length===2);await page.waitForTimeout(500);await feed([place('fist',.35),place('fist',.65)]);await page.waitForTimeout(300);await feed([place('fist',.42),place('fist',.58)]);
  await until(()=>__machineStudio.state.view.zoom<=.85);await clear();assert.equal(await get(()=>__machineStudio.machine.close),false,'scale out shows the whole machine');
- await page.locator('#machine-recenter').click();assert.equal(await get(()=>__machineStudio.state.view.zoom),1);assert.equal(await get(()=>__machineStudio.machine.close),true);
+ await page.locator('#machine-recenter').click();assert.equal(await get(()=>__machineStudio.state.view.zoom),1);assert.equal(await get(()=>__machineStudio.machine.close),false,'Recenter leaves the framing to the viewer');
+ await page.locator('#machine-framing').click();assert.equal(await get(()=>__machineStudio.machine.close),true,'the corner control goes back in');
  // Skin cycles solid, x-ray, light painting: every working point leaves its path.
  const love=async skin=>{await feed([place('love',.5)]);await until(k=>__machineStudio.engine.live.skin===k,skin);await clear();};
  await love('xray');await love('paint');await sew(3);await until(()=>__machineStudio.engine.live.exposure>=1000);assert.match(await page.locator('#machine-caption').textContent(),/Light painting/);await shot('paint');await love('glass');
@@ -61,7 +62,8 @@ try{
  const filmed=await get(()=>__machineStudio.machine.crank);await page.waitForTimeout(500);const slow=await get(()=>__machineStudio.machine.crank)-filmed;
  assert.ok(slow>10&&slow<200,`slow motion, ${slow}°`);assert.equal(await page.locator('.machine-film').isVisible(),true);assert.match(await page.locator('.machine-film p').textContent(),/1\/50/);await shot('film');await clear();
  // Part draws with thread: a heart traced in the air is sewn into the cloth.
- const heart=[...Array(30).fill(0)].map(()=>[place('open',.5,.62-5*.0085*aspect*.55)]);
+ // Free motion counts in from a palm held still for a moment, so the path opens with one.
+ const heart=[...Array(45).fill(0)].map(()=>[place('open',.5,.62-5*.0085*aspect*.55)]);
  for(let i=0;i<=600;i++){const t=i/600*Math.PI*2,X=16*Math.sin(t)**3,Y=13*Math.cos(t)-5*Math.cos(2*t)-2*Math.cos(3*t)-Math.cos(4*t);heart.push([place('open',1-(.5+X*.0085),.62-Y*.0085*aspect*.55)]);}
  await path(heart);
  const sewn=await get(()=>{const e=__machineStudio.machine.embroidery,xs=[...e.x.slice(0,e.count)],zs=[...e.z.slice(0,e.count)];return {n:e.count,w:Math.max(...xs)-Math.min(...xs),h:Math.max(...zs)-Math.min(...zs),draw:__machineStudio.engine.live.draw};});
@@ -106,12 +108,12 @@ try{
  const held=await get(()=>__machineStudio.machine.count);await sew(1);assert.equal(await get(()=>__machineStudio.machine.count),held,'no lock, no count');
  await page.locator('#machine-recenter').click();assert.deepEqual(await get(()=>__machineStudio.machine.removed),[]);await sew(1);assert.equal(await last(),'formed');
  await pull('feedDog',true);await sew(2);assert.equal(await last(),'stationary');assert.match(await cap(),/No feed dog/);await page.locator('#machine-recenter').click();
- await pull('takeUp',false);await sew(2);assert.equal(await last(),'loose');assert.match(await cap(),/No take-up/);assert.equal(await get(()=>__machineStudio.machine.close),true,'a removal goes close');await page.locator('#machine-recenter').click();
+ await pull('takeUp',false);await sew(2);assert.equal(await last(),'loose');assert.match(await cap(),/No take-up/);assert.equal(await get(()=>__machineStudio.machine.close),false,'a removal leaves the framing alone');await page.locator('#machine-recenter').click();
  // Timing fault from the corner control and the keyboard.
  await sew(1);await page.locator('#machine-timing').click();await sew(2);assert.equal(await last(),'skipped');assert.match(await cap(),/late/);
  await page.locator('#machine-viewport').focus();await page.keyboard.press('t');await sew(1);assert.match(await cap(),/early/);await page.keyboard.press('Home');await sew(1);assert.equal(await last(),'formed');
  // The framing control, and the cap on what is kept.
- await page.locator('#machine-framing').click();assert.equal(await get(()=>__machineStudio.machine.close),false);
+ await page.locator('#machine-framing').click();assert.equal(await get(()=>__machineStudio.machine.close),true);
  await sew(30);assert.ok(await get(()=>__machineStudio.machine.stitches.length)<=24);
  assert.equal(await page.locator('#machine-count').textContent(),String(await get(()=>__machineStudio.machine.count)));
  await page.locator('#machine-sources').click();const about=await page.locator('#machine-about').textContent();assert.match(about,/Elias Howe/);assert.match(about,/1846/);assert.match(about,/1856/);assert.match(about,/light painting/);assert.match(about,/strobe/);await page.locator('#machine-about-close').click();

@@ -35,5 +35,13 @@
 .perfume-loupe{width:170px;text-align:center}
 .perfume-loupe canvas{display:block;width:170px;height:170px;border-radius:50%;box-shadow:0 0 0 1px rgba(243,207,134,.7),0 0 0 5px rgba(243,207,134,.1),0 10px 40px rgba(0,0,0,.6)}
 .perfume-loupe p{margin:8px -40px 0;font-size:10.5px;letter-spacing:.06em;color:rgba(243,207,134,.85)}
+.perfume-dive-cue{position:absolute;z-index:3;left:50%;top:76px;transform:translateX(-50%);width:min(260px,calc(100% - 32px));padding:8px 12px 10px;border-radius:8px;background:rgba(8,7,7,.6);backdrop-filter:blur(8px);pointer-events:none;text-align:center}
+.perfume-dive-cue[hidden]{display:none}
+.perfume-dive-cue b{display:block;margin-bottom:7px;font:500 12px/1.2 'Manrope',system-ui,sans-serif;letter-spacing:.04em;color:#fbecd0}
+.perfume-dive-cue i{position:relative;display:block;height:4px;border-radius:3px;background:rgba(243,207,134,.18);overflow:hidden}
+.perfume-dive-cue s,.perfume-dive-cue em{position:absolute;left:0;top:0;bottom:0;width:0;border-radius:3px;text-decoration:none}
+.perfume-dive-cue s{background:rgba(243,207,134,.75)}
+.perfume-dive-cue em{background:#fff3d6}
+.perfume-dive-cue.is-in b{color:#fff3d6}
 @media(max-width:900px){.perfume-caption{bottom:188px;font-size:12px}.perfume-atelier-title b{font-size:22px}.perfume-drydown{min-width:180px}}
 @media(prefers-reduced-motion:reduce){.perfume-note,.perfume-drydown,.perfume-dry-row{transition:none}}

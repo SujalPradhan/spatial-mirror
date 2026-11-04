@@ -7,6 +7,8 @@ import type {MachineScene} from './contracts';
 import {apexOf,bobbinPath,DISCS,settledPaths,topPath} from './threads';
 import {CENTER,UNIT,dims,followers,leverLength,machineExtras,machineParts,type P,type PartId} from './parts';
 
+/** Screen pixels around the thread that a pinch still catches. */
+const THREAD_PICK=60;
 const TOP_COLOR='#ff5a4a',BOBBIN_COLOR='#35d6ff',THREAD_R=.4,CLOTH='#e9dcc4';
 const smooth=(n:number)=>{const u=Math.max(0,Math.min(1,n));return u*u*(3-2*u);};
 const rad=(d:number)=>d*Math.PI/180;
@@ -47,6 +49,8 @@ class Thread {
   const solid=new T.Mesh(this.geometry,this.solid),ghost=new T.Mesh(this.geometry,this.ghost);
   solid.frustumCulled=ghost.frustumCulled=false;solid.renderOrder=1;ghost.renderOrder=210;this.group.add(solid,ghost);
  }
+ /** Lit up as a pinch closes on it or holds it. */
+ heat(k:number){this.solid.emissiveIntensity=.42+1.2*k;}
  look(alpha:number,ghost:number){this.solid.opacity=alpha;this.solid.transparent=alpha<1;this.ghost.opacity=ghost*alpha;this.ghost.visible=ghost>.01;this.group.visible=alpha>.01&&this.drawn;}
  private drawn=false;
  /** Colour by position along the strand, 0 at its start. Called with nothing new it is skipped once settled. */
@@ -139,6 +143,8 @@ export class MachineView extends MeshPartsView {
  private readonly hoop:T.Mesh<T.TorusGeometry,T.MeshBasicMaterial>;private readonly aim:T.Mesh<T.RingGeometry,T.MeshBasicMaterial>;
  private readonly exposure=new Glow(trails.length*(EXPOSE/EXPOSE_STEP+2));
  private readonly flow=new Glow(links.length*FLOW);
+ /** A soft light on the loop as it is thrown. */
+ private readonly loopGlow=new Glow(2);
  private readonly linkLines:T.LineSegments<T.BufferGeometry,T.LineBasicMaterial>;
  private readonly unpicks=Array.from({length:UNPICK_DRAWN},()=>new Thread(TOP_COLOR,70,5));
  private painting=false;
@@ -164,7 +170,7 @@ export class MachineView extends MeshPartsView {
   this.hoop=new T.Mesh(new T.TorusGeometry(HOOP_R,.35,6,120).rotateX(Math.PI/2),new T.MeshBasicMaterial({color:'#9ff4ff',transparent:true,opacity:0,depthWrite:false,blending:T.AdditiveBlending,toneMapped:false}));
   this.aim=new T.Mesh(new T.RingGeometry(2.2,2.7,40).rotateX(-Math.PI/2),new T.MeshBasicMaterial({color:'#9ff4ff',transparent:true,opacity:0,depthWrite:false,depthTest:false,blending:T.AdditiveBlending,toneMapped:false,side:T.DoubleSide}));
   this.aim.position.set(0,clothTop+.5,0);this.aim.renderOrder=240;
-  this.free.add(this.fabric,this.shade,this.sewn,this.hoop);this.body.add(this.free,this.aim,this.exposure.points,this.flow.points);
+  this.free.add(this.fabric,this.shade,this.sewn,this.hoop);this.body.add(this.free,this.aim,this.exposure.points,this.flow.points,this.loopGlow.points);
   const lg=new T.BufferGeometry();lg.setAttribute('position',new T.BufferAttribute(new Float32Array(links.length*6),3).setUsage(T.DynamicDrawUsage));
   this.linkLines=new T.LineSegments(lg,new T.LineBasicMaterial({color:GOLD,transparent:true,opacity:0,depthTest:false,depthWrite:false,blending:T.AdditiveBlending}));
   this.linkLines.frustumCulled=false;this.linkLines.renderOrder=245;this.body.add(this.linkLines);
@@ -187,16 +193,26 @@ export class MachineView extends MeshPartsView {
   for(let i=t.samples-1;i>=0;i--){const k=i*t.sides*3;if(t.position[k+1]<clothTop+6+rise*12)continue;v.set(t.position[k],t.position[k+1],t.position[k+2]).applyMatrix4(this.body.matrixWorld).project(this.camera);break;}
   return {x:(v.x+1)/2,y:(1-v.y)/2};
  }
- onThread(p:WorldPoint){
-  const t=this.threads.top;if(!t.group.visible)return false;
-  const w=this.host.clientWidth/2,h=this.host.clientHeight/2,target=this.tmp2.set(p.x,p.y,p.z).project(this.camera);
-  for(let i=0;i<t.samples;i+=3){
-   const k=i*t.sides*3;if(t.position[k+1]<clothTop+2)continue;
-   const v=this.tmp.set(t.position[k],t.position[k+1],t.position[k+2]).applyMatrix4(this.body.matrixWorld).project(this.camera);
-   if(Math.abs(v.x)<1&&Math.abs(v.y)<1&&Math.hypot((v.x-target.x)*w,(v.y-target.y)*h)<30)return true;
+ onThread(p:WorldPoint){return this.threadDistance(p)<THREAD_PICK;}
+ /** Every drawn sample of the top thread, above and below the cloth, measured on screen. */
+ private nearest(p:WorldPoint){
+  const t=this.threads.top,found={d:Infinity,i:-1};if(!t.group.visible)return found;
+  const w=this.host.clientWidth/2,h=this.host.clientHeight/2,target=this.tmp2.set(p.x,p.y,p.z).project(this.camera),tx=target.x,ty=target.y,m=this.body.matrixWorld;
+  for(let i=0;i<t.samples;i++){
+   // The tube's first ring vertex is a radius off the centre line: close enough at a 60 pixel reach.
+   const k=i*t.sides*3,v=this.tmp.set(t.position[k],t.position[k+1],t.position[k+2]).applyMatrix4(m).project(this.camera);
+   if(Math.abs(v.x)>1||Math.abs(v.y)>1)continue;
+   const d=Math.hypot((v.x-tx)*w,(v.y-ty)*h);if(d<found.d){found.d=d;found.i=i;}
   }
-  return false;
+  return found;
  }
+ threadDistance(p:WorldPoint){return this.nearest(p).d;}
+ threadNear(p:WorldPoint):WorldPoint|null{
+  const n=this.nearest(p);if(n.i<0)return null;
+  const t=this.threads.top,k=n.i*t.sides*3,v=this.tmp.set(t.position[k],t.position[k+1],t.position[k+2]).applyMatrix4(this.body.matrixWorld);
+  return {x:v.x,y:v.y,z:v.z};
+ }
+ stageOf(p:WorldPoint){const v=this.tmp.set(p.x,p.y,p.z).project(this.camera);return {x:(v.x+1)/2,y:(1-v.y)/2};}
  private motion(id:PartId){return this.part(id)!.motion;}
  private offset(id:PartId,out:T.Vector3){return out.copy(this.part(id)!.group.position);}
  private animate(f:MeshFrame){
@@ -230,6 +246,15 @@ export class MachineView extends MeshPartsView {
   this.unpicked(scene);this.embroider(scene,f.now,draw);
   this.exposure.px.value=this.flow.px.value=this.renderer.getPixelRatio();
   this.paintLight(scene);this.linkages(scene);
+  t.top.heat(scene.threadHot??0);this.lightLoop(scene,alpha);
+ }
+ private lightLoop(scene:MachineScene,alpha:number){
+  const g=this.loopGlow,k=(scene.loopLight??0)*alpha;g.begin();
+  if(k>.02){
+   const s=scene.machine,a=apexOf({...s,stitches:[]},0),big=Math.min(2.4,Math.max(1,scene.scale/1.4));g.px.value=this.renderer.getPixelRatio();
+   g.add(a[0],a[1],a[2],this.color.set(TOP_COLOR),.9*k,34*big);g.add(a[0],a[1],a[2],this.color.set('#fff2e8'),.5*k,12*big);
+  }
+  g.end();
  }
  /** Held, the top thread kinks toward the fingers and shows its tension from the discs down; before the discs it is unstressed. */
  private threadsFor(scene:MachineScene,now:number){

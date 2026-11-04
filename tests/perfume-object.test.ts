@@ -21,16 +21,32 @@ const press=(t:ReturnType<typeof setup>)=>{t.engine.kick(1);t.run([],120);};
 
 test('world size matches the engine tuning for a five-unit object',()=>{const top=105-50,bottom=-50;assert.ok((top-bottom)*.05>5&&(top-bottom)*.05<6);});
 test('pulling a part past the distance removes it, and it stays out after letting go',()=>{
- const t=setup();t.pull('spring',REMOVE_AT*.8);assert.equal(t.engine.pump.removed.size,0,'short of the distance');t.run([],60);assert.ok(Math.abs(t.engine['scene'].partOffsets[index('spring')*3])<.05,'springs back');
- t.pull('spring',REMOVE_AT+.3);assert.ok(t.engine.pump.removed.has('spring'));assert.match(t.engine.caption,/Press to see why/);
+ const t=setup();t.pull('spring',REMOVE_AT*.8);assert.equal(t.engine.pump.removed.size,0,'short of the distance');t.run([],90);assert.ok(Math.abs(t.engine['scene'].partOffsets[index('spring')*3])<.05,'springs back');
+ t.pull('spring',REMOVE_AT+.3);assert.equal(t.engine.pump.removed.size,0,'still held, it is only on offer');assert.match(t.engine.caption,/Let go to take the spring out/);
+ t.run([],40);assert.ok(t.engine.pump.removed.has('spring'),'let go there, it is out');assert.match(t.engine.caption,/Press to see why/);
  t.run([],90);const s=t.engine['scene'];assert.ok(s.parked[index('spring')]>.9,'parked');assert.ok(Math.hypot(s.partOffsets[index('spring')*3],s.partOffsets[index('spring')*3+1])<.01,'springs no longer hold it');
 });
+test('a part drawn past the distance and brought back before letting go stays in',()=>{
+ const t=setup();t.pull('spring',REMOVE_AT+.3);assert.match(t.engine.caption,/Let go/);
+ for(let x=REMOVE_AT+.3;x>=0;x-=.1)t.run([t.hand('pinch',x)]);t.run([t.hand('pinch',0)],5);assert.equal(t.engine.caption,'');t.run([],60);assert.equal(t.engine.pump.removed.size,0);
+});
+test('a pinch that flickers out keeps hold for a moment, and the same hand takes it straight back',()=>{
+ const t=setup(),i=index('spring')*3,s=t.engine['scene'];t.pull('spring',.6);const held=s.partOffsets[i];
+ t.run([t.hand('open',.6)],12);assert.ok(held>.4&&Math.abs(s.partOffsets[i]-held)<.1,`held through a dropped pose: ${held} ${s.partOffsets[i]}`);assert.ok(s.partGlow[index('spring')]>.99);
+ t.set(-1);t.run([t.hand('pinch',.65)]);for(let x=.65;x<=.9;x+=.05)t.run([t.hand('pinch',x)]);t.run([t.hand('pinch',.9)],10);
+ assert.ok(s.partOffsets[i]>.8,`taken back and drawn on: ${s.partOffsets[i]}`);
+ t.run([],60);assert.ok(Math.abs(s.partOffsets[i])<.3,'and released after the grace once really let go');
+});
+test('a pinch that closes on nothing leaves a small ring at the fingertips',()=>{
+ const t=setup();t.set(-1);const out=t.run([t.hand('pinch',.3,.2)]);assert.ok((out.scene.aims??[]).some(a=>a.kind==='miss'&&Math.abs(a.x-.3)<1e-9),'a miss is shown');
+ t.run([],60);assert.equal((t.engine['scene'].aims??[]).length,0,'and fades');
+});
 test('spring out: the next press is the last, and the caption is the failure row',()=>{
- const t=setup();t.pull('spring',1.5);t.run([],5);press(t);
+ const t=setup();t.pull('spring',1.5);t.run([],40);press(t);
  assert.equal(t.engine.pump.doses,1);assert.equal(t.engine.pump.depth,1);assert.equal(t.engine.pump.stuck,true);
  assert.ok(t.engine.caption.includes(failures.find(f=>f.id==='no-spring')!.result));
 });
-test('swirl out: jet',()=>{const t=setup();t.pull('nozzle',1.5);t.run([],5);press(t);assert.equal(t.engine.lastSpray,'jet');assert.ok(t.engine.caption.includes('jet'));});
+test('swirl out: jet',()=>{const t=setup();t.pull('nozzle',1.5);t.run([],40);press(t);assert.equal(t.engine.lastSpray,'jet');assert.ok(t.engine.caption.includes('jet'));});
 test('plucking a parked part sends it home and the pump works again',()=>{
  const t=setup();t.pull('spring',1.5);t.run([],40);press(t);
  const s=t.engine['scene'],i=index('spring')*3;t.run([t.hand('pinch',9)]);assert.ok(Math.hypot(s.partOffsets[i],s.partOffsets[i+1],s.partOffsets[i+2])>1,'starts where it is, not at home');

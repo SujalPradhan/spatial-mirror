@@ -1,5 +1,6 @@
 import type {MirrorEngineOutput,MirrorScene,MirrorSound,MirrorState,MirrorWorld,WorldPoint} from '../mirror/contracts';
 import type {MeshSkin} from '../mirror/parts-view';
+import type {MirrorAim} from '../mirror/parts-overlay';
 import type {MachineOptions,MachineState,Removable} from './model';
 
 /** Solid, x-ray, then light painting: the last draws as x-ray with every moving part's path exposed over it. */
@@ -32,12 +33,24 @@ export interface MachineSceneExtra {
  /** Recently unpicked locks, cloth x and seconds since. */
  unpicked:{x:number;age:number}[];
  hidden:Set<string>;fade:Record<string,number>;
+ /** Reticles, missed pinches and the free-motion count-in, drawn by the overlay. */
+ aims?:MirrorAim[];
+ /** 0 to 1: the top thread lit as a pinch closes on it or holds it. */
+ threadHot:number;
+ /** 0 to 1: light on the loop as it is thrown, in place of any camera move. */
+ loopLight:number;
 }
 export type MachineScene=MirrorScene<MachineSkin>&MachineSceneExtra;
 export interface MachineEngineOutput extends MirrorEngineOutput<MachineScene,MachineSound> {stitches:number}
 export interface MachineWorld extends MirrorWorld {partInfo(index:number):{id:string;title:string;role:string;removable:boolean};
  /** Where a part stands on the stage, 0..1 from the top left. */
  screenOf(id:string):{x:number;y:number};
- /** Whether a world point lies on the top thread above the cloth, as seen on screen. */
- onThread?(point:WorldPoint):boolean}
+ /** Whether a world point lies on the top thread, as seen on screen. */
+ onThread?(point:WorldPoint):boolean;
+ /** Screen pixels from a world point to the nearest drawn sample of the top thread, above or below the cloth. */
+ threadDistance?(point:WorldPoint):number;
+ /** That nearest thread point, in world space, for a reticle to snap to. */
+ threadNear?(point:WorldPoint):WorldPoint|null;
+ /** Where a world point falls on the stage, 0..1 from the top left. */
+ stageOf?(point:WorldPoint):{x:number;y:number}}
 export type {Removable};
