@@ -1,17 +1,18 @@
 import {Quaternion,Vector3} from 'three';
 import {clamp,ease} from '../mirror/engine';
 import type {MirrorBehaviour,MirrorContext,MirrorViewState} from '../mirror/contracts';
-import type {MeshSkin} from '../mirror/parts-view';
-import type {PerfumeScene,PerfumeSceneExtra,PerfumeSound,PerfumeWorld} from './contracts';
+import type {PerfumeScene,PerfumeSceneExtra,PerfumeSkin,PerfumeSound,PerfumeWorld} from './contracts';
 import {activeFailures,createPump,failures,setRemoved,stepPump,type PumpState,type Spray} from './model';
 import type {PartId} from './parts';
 
-type Context=MirrorContext<MeshSkin,PerfumeSceneExtra,PerfumeSound>;
+type Context=MirrorContext<PerfumeSkin,PerfumeSceneExtra,PerfumeSound>;
 /** World units a part must be drawn away before it counts as taken out. The object is about 5 units tall. */
 export const REMOVE_AT=1.1;
 /** World units of downward hand travel that make one full stroke: the real 5.7mm is far too small to do by hand. */
 export const PRESS_TRAVEL=.7;
 const PRESS_DOWN=.09,PRESS_HOLD=.3,CYCLE=1.5,PARK_TAU=.18,CAMERA_LIMIT=1.2;
+/** Bullet time: how slow a full slice makes the world, and the longest a rewind may hold the actuator down. */
+export const BULLET=.03,REWIND_MAX=2.5;
 /** Real contact in the assembly, not list order. Glass and liquid are one body, see settle. */
 const touching:Partial<Record<string,string[]>>={cap:['collar'],tube:['body','ball'],body:['tube','ball','spring'],ball:['body','spring'],spring:['ball','piston'],piston:['spring','stem'],stem:['piston','actuator'],collar:['body'],actuator:['stem','nozzle'],nozzle:['actuator'],bottle:[],liquid:[]};
 /** Beside the object, at each part's own height so it reads as drawn straight out. World units. The nozzle sits above the spray's path. */
@@ -30,15 +31,16 @@ export function slotOffset(id:string,view:{q:readonly number[]},out:Float32Array
 }
 
 /** The pump, what has been taken out of it, and what that did. */
-export class PerfumeBehaviour implements MirrorBehaviour<MeshSkin,PerfumeSceneExtra,PerfumeSound> {
- pump=createPump();idle=false;seekDegrees=0;lastSpray:Spray='none';
+export class PerfumeBehaviour implements MirrorBehaviour<PerfumeSkin,PerfumeSceneExtra,PerfumeSound> {
+ pump=createPump();idle=false;seekDegrees=0;lastSpray:Spray='none';time=1;rewindT=-1;
+ private holdDepth=0;private rewound=false;
  private driving=0;private pressT=-1;private dragDepth=0;private dragBase=0;
  private held=-1;private returning=-1;private actuator=-1;private bottle=-1;private liquid=-1;
  private order:PartId[]=[];private seen=false;private wasStuck=false;private wasPhase='rest';private view:MirrorViewState={q:[0,0,0,1],zoom:1,x:0,y:0};
  private ids:string[]=[];private scene:PerfumeScene|null=null;private slot=new Float32Array(3);
  constructor(private world:PerfumeWorld){}
 
- initialScene():PerfumeSceneExtra{const n=this.world.partCount;return {pump:this.pump,parked:new Float32Array(n),parkFrom:new Float32Array(n*3),caption:''};}
+ initialScene():PerfumeSceneExtra{const n=this.world.partCount;return {pump:this.pump,parked:new Float32Array(n),parkFrom:new Float32Array(n*3),caption:'',time:1,rewind:-1};}
  fit(count:number){
   this.ids=Array.from({length:count},(_,i)=>this.world.partInfo(i).id);
   this.actuator=this.ids.indexOf('actuator');this.bottle=this.ids.indexOf('bottle');this.liquid=this.ids.indexOf('liquid');
@@ -46,12 +48,14 @@ export class PerfumeBehaviour implements MirrorBehaviour<MeshSkin,PerfumeSceneEx
  describe(i:number){const info=this.world.partInfo(i);return {title:info.title,detail:this.pump.removed.has(info.id as PartId)?'Out. Pinch it to send it back.':info.role};}
  neighbours(part:number){return (touching[this.ids[part]]??[]).map(id=>this.ids.indexOf(id)).filter(i=>i>=0);}
  drive(direction:number){
-  if(direction<0&&this.driving>=0){this.pressT=-1;this.seekDegrees=0;}
+  if(direction<0&&this.driving>=0)this.rewind();
   this.driving=direction;
  }
- // A finger drawn round a pump does nothing, so pointing is left to name parts: the engine shows the chip either way.
+ // Stirring the air is drawn by the view from the fingertip; pointing still names parts through the engine's chip.
  stir(){}
- kick(direction:1|-1){if(direction<0){this.pressT=-1;this.seekDegrees=0;}else if(this.pressT<0)this.pressT=0;}
+ kick(direction:1|-1){if(direction<0)this.rewind();else if(this.pressT<0)this.pressT=0;}
+ /** 👎 runs time backwards: what is in the air streams home first, and only then does the actuator rise. */
+ private rewind(){this.pressT=-1;this.seekDegrees=0;this.rewindT=0;this.holdDepth=this.pump.depth;this.rewound=true;}
  seek(degrees:number){if(Number.isFinite(degrees))this.seekDegrees=clamp(degrees,0,360);}
  grabbed(part:number,c:Context){
   this.held=part;this.dragBase=this.pump.depth;this.dragDepth=part===this.actuator?this.dragBase:0;
@@ -80,12 +84,17 @@ export class PerfumeBehaviour implements MirrorBehaviour<MeshSkin,PerfumeSceneEx
  }
  advance(h:number,c:Context){
   this.scene=c.scene as PerfumeScene;this.view=c.view;
-  const s=this.pump;
-  if(this.pressT>=0){this.pressT+=h;if(this.pressT>=CYCLE)this.pressT=-1;}
-  if(this.driving>0&&this.pressT<0)this.pressT=0;
-  const t=this.pressT,pressing=t<0?0:t<PRESS_DOWN?t/PRESS_DOWN:t<PRESS_DOWN+PRESS_HOLD?1:0,finger=Math.max(pressing,this.held===this.actuator?this.dragDepth:0,this.seekDegrees/360);
+  const s=this.pump,a=clamp(c.scene.slice.amount,0,1);
+  // Slicing slows the world, not the hand: grabs, springs and parking keep real time.
+  this.time=1-(1-BULLET)*a*a*(3-2*a);
   if(c.frozen||h<=0)return;
-  stepPump(s,finger,h);
+  if(this.rewound){this.rewound=false;c.sound({type:'rewind'});}
+  if(this.rewindT>=0){this.rewindT+=h;if(!(this.world.inFlight?.()??0)||this.rewindT>REWIND_MAX)this.rewindT=-1;}
+  const ht=h*this.time;
+  if(this.pressT>=0){this.pressT+=ht;if(this.pressT>=CYCLE)this.pressT=-1;}
+  if(this.driving>0&&this.pressT<0&&this.rewindT<0)this.pressT=0;
+  const t=this.pressT,pressing=t<0?0:t<PRESS_DOWN?t/PRESS_DOWN:t<PRESS_DOWN+PRESS_HOLD?1:0,finger=this.rewindT>=0?this.holdDepth:Math.max(pressing,this.held===this.actuator?this.dragDepth:0,this.seekDegrees/360);
+  stepPump(s,finger,ht);
   if(s.spray!=='none'&&this.lastSpray!==s.spray)this.lastSpray=s.spray;
   if(s.phase!==this.wasPhase){
    if(s.phase==='threshold'){c.sound({type:'click'});}
@@ -106,12 +115,12 @@ export class PerfumeBehaviour implements MirrorBehaviour<MeshSkin,PerfumeSceneEx
    if(out)c.glow(i,.3);
   }
  }
- publish(c:Context){const s=c.scene;s.pump=this.pump;s.slice.x=c.view.x;s.caption=this.caption();this.scene=s as PerfumeScene;}
+ publish(c:Context){const s=c.scene;s.pump=this.pump;s.slice.x=c.view.x;s.caption=this.caption();s.time=this.time;s.rewind=this.rewindT;this.scene=s as PerfumeScene;}
  reset(s:PerfumeScene){this.restore(s);}
  /** Every part back, full bottle. */
  restore(s=this.scene){
-  this.pump=createPump();this.order=[];this.seen=false;this.pressT=-1;this.driving=0;this.seekDegrees=0;this.lastSpray='none';this.wasStuck=false;this.wasPhase='rest';this.returning=this.held=-1;
-  if(s){s.pump=this.pump;s.parked.fill(0);s.parkFrom.fill(0);s.caption='';}
+  this.pump=createPump();this.order=[];this.seen=false;this.pressT=-1;this.rewindT=-1;this.time=1;this.driving=0;this.seekDegrees=0;this.lastSpray='none';this.wasStuck=false;this.wasPhase='rest';this.returning=this.held=-1;
+  if(s){s.pump=this.pump;s.parked.fill(0);s.parkFrom.fill(0);s.caption='';s.time=1;s.rewind=-1;}
  }
  private caption(){
   const s:PumpState=this.pump,last=this.order[this.order.length-1];

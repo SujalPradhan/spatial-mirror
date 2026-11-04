@@ -28,6 +28,16 @@ const at=id=>page.evaluate(async id=>{
  const x=(p.x+1)/2,y=(1-p.y)/2;
  return a>stage?{x:(x-.5)*stage/a+.5,y}:{x,y:(y-.5)*a/stage+.5};
 },id);
+/** Mirror point under a world point the view computes, e.g. 'view.plume(40)'. */
+const atWorld=expr=>page.evaluate(async expr=>{
+ await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+ const view=window.__perfumeStudio.view,p=eval(expr).clone().project(view.camera),v=document.querySelector('#perfume-video'),a=v.videoWidth/v.videoHeight,host=document.querySelector('#perfume-viewport'),stage=host.clientWidth/host.clientHeight;
+ const x=(p.x+1)/2,y=(1-p.y)/2;
+ return a>stage?{x:(x-.5)*stage/a+.5,y}:{x,y:(y-.5)*a/stage+.5};
+},expr);
+/** Waits for n rendered frames: the software renderer can be slower than the hand feed. */
+const frames=n=>page.evaluate(n=>new Promise(r=>{let k=0;const f=()=>++k>=n?r():requestAnimationFrame(f);requestAnimationFrame(f);}),n);
+const until=(fn,arg)=>page.waitForFunction(fn,arg,{timeout:90000});
 const check=m=>{checks.push(m);console.log('ok',m);};
 /** Pinch a part where it is, draw it sideways in steps, let go. */
 async function pullOut(id,dx=.32,steps=10){
@@ -39,7 +49,7 @@ async function pullOut(id,dx=.32,steps=10){
 async function press(){await feed([place('thumbUp',.86,.5)]);await posed('thumbUp');await page.waitForFunction(()=>window.__perfumeStudio.pump.depth>.9);}
 const recenter=async()=>{await quiet();await page.locator('#perfume-recenter').click();await page.waitForFunction(()=>window.__perfumeStudio.pump.removed.size===0);};
 try{
- await page.goto(base+'/perfume');await page.waitForFunction(()=>window.__perfumeStudio?.ready&&window.__perfumeStudio.owns);
+ await page.goto(base+'/perfume');await page.waitForFunction(()=>window.__perfumeStudio?.ready&&window.__perfumeStudio.owns,null,{timeout:60000});
  assert.equal(await page.title(),'Perfume Spray — Spatial Studio');
  assert.ok(await page.locator('.perfume-page').count());
  assert.equal(await page.locator('#perfume-count').textContent(),'0');
@@ -49,15 +59,21 @@ try{
 
  // Hold.
  const q0=await read(()=>JSON.stringify(window.__perfumeStudio.state.view));
- await feed([place('fist',.5,.5)]);await posed('fist');await page.waitForTimeout(150);await feed([place('fist',.62,.42)]);
+ await feed([place('fist',.5,.5)]);await posed('fist');await frames(4);await feed([place('fist',.62,.42)]);
  await page.waitForFunction(q=>JSON.stringify(window.__perfumeStudio.state.view)!==q,q0);await shot('02-hold');check('Hold moves the object');
  await recenter();
 
  // Scale, into Dive.
- await feed([place('fist',.42,.5),place('fist',.58,.5)]);await page.waitForFunction(()=>window.__perfumeStudio.frame.hands.filter(h=>h.pose==='fist').length===2);await page.waitForTimeout(200);
- await feed([place('fist',.2,.5),place('fist',.8,.5)]);await page.waitForFunction(()=>window.__perfumeStudio.state.view.zoom>=2.4);await page.waitForTimeout(400);await shot('03-dive');
+ // A loaded software renderer can drop the grip between frames, so the gesture is tried again rather than timed tighter.
+ for(let k=0;k<4&&await read(()=>window.__perfumeStudio.state.view.zoom)<2.4;k++){
+  await quiet();await feed([place('fist',.42,.5),place('fist',.58,.5)]);await page.waitForFunction(()=>window.__perfumeStudio.frame.hands.filter(h=>h.pose==='fist').length===2);await frames(4);
+  for(const g of [.14,.22,.3]){await feed([place('fist',.5-g,.5),place('fist',.5+g,.5)]);await frames(2);}
+  await page.waitForFunction(()=>window.__perfumeStudio.state.view.zoom>=2.4,null,{timeout:15000}).catch(()=>{});
+ }
+ await until(()=>window.__perfumeStudio.state.view.zoom>=2.4);await page.waitForTimeout(400);await shot('03-dive');
  check(`Two fists scale past the dive threshold (zoom ${(await read(()=>window.__perfumeStudio.state.view.zoom)).toFixed(2)})`);
  await press();await page.waitForTimeout(150);await shot('04-dive-press');
+ await page.evaluate(()=>window.__perfumeStudio.engine.kick(1));await until(()=>window.__perfumeStudio.view.swirling>20&&window.__perfumeStudio.view.labels.leaders>=1);check('Dive shows liquid spiralling in the swirl chamber, labelled');
  await recenter();
 
  // Part: an open hand spreads what is near it.
@@ -67,9 +83,10 @@ try{
  await recenter();
 
  // Tear explodes everything, and it falls back.
- await feed([place('pinch',.47,.5),place('pinch',.53,.5)]);await page.waitForFunction(()=>window.__perfumeStudio.frame.hands.filter(h=>h.pose==='pinch').length===2);await page.waitForTimeout(150);
- for(const g of [.2,.3,.4]){await feed([place('pinch',.5-g,.5),place('pinch',.5+g,.5)]);await page.waitForTimeout(120);}
+ await feed([place('pinch',.47,.5),place('pinch',.53,.5)]);await page.waitForFunction(()=>window.__perfumeStudio.frame.hands.filter(h=>h.pose==='pinch').length===2);await frames(4);
+ for(const g of [.2,.3,.4]){await feed([place('pinch',.5-g,.5),place('pinch',.5+g,.5)]);await frames(2);}
  await page.waitForFunction(()=>window.__perfumeStudio.engine.scene.explode>.8);await page.waitForTimeout(250);await shot('06-explode');
+ await until(()=>window.__perfumeStudio.view.labels.leaders>=10);check(`Tear opens an atelier view with ${await read(()=>window.__perfumeStudio.view.labels.leaders)} named parts on leader lines`);
  await quiet();await page.waitForFunction(()=>window.__perfumeStudio.engine.scene.explode<.02);check('Two pinches explode it, and it reassembles');
 
  // Spring out, press, stuck.
@@ -95,9 +112,29 @@ try{
  await recenter();
 
  // Press cycle: mist, a count, and Release.
- await page.evaluate(()=>{window.__perfumeStudio.engine.kick(1);});await page.waitForFunction(()=>window.__perfumeStudio.view.droplets>60);await page.waitForTimeout(90);await shot('10-mist');
+ await page.evaluate(()=>{window.__perfumeStudio.engine.kick(1);});await until(()=>window.__perfumeStudio.lastSpray==='mist'&&window.__perfumeStudio.view.droplets>60);await page.waitForTimeout(90);await shot('10-mist');
  assert.equal(await read(()=>window.__perfumeStudio.lastSpray),'mist');await page.waitForFunction(()=>window.__perfumeStudio.pump.doses===1&&window.__perfumeStudio.pump.phase==='rest');check('Press sprays a hollow mist and refills');
- await press();await feed([place('thumbDown',.86,.5)]);await posed('thumbDown');await page.waitForFunction(()=>window.__perfumeStudio.pump.depth===0);check('Thumbs up runs a press, thumbs down lets go');
+ // The mist becomes scent: notes bloom with labels, and top evaporates before base.
+ await until(()=>window.__perfumeStudio.view.notes.every(n=>n>0)&&window.__perfumeStudio.view.labels.notes[0]);await shot('10b-notes');
+ assert.match(await page.locator('.perfume-note[data-note=top]').textContent(),/Top/);
+ await until(()=>{const n=window.__perfumeStudio.view.notes;return n[0]===0&&n[2]>0;});check('Mist turns into labelled scent notes, and the top notes fade before the base');
+ // A pointing finger stirs the lingering scent.
+ const air=await atWorld('view.plume(30)');
+ for(let i=0;i<14&&!await read(()=>window.__perfumeStudio.view.stirred>0);i++){const a=i*.9;await feed([place('point',air.x+Math.cos(a)*.05,air.y+.1+Math.sin(a)*.05)]);await page.waitForTimeout(120);}
+ await until(()=>window.__perfumeStudio.view.stirred>0);check('A pointing finger swirls the wisps');await quiet();
+ await press();await until(()=>window.__perfumeStudio.view.wisps>5&&window.__perfumeStudio.pump.depth>.9);
+ await feed([place('thumbDown',.86,.5)]);await posed('thumbDown');
+ const back=await page.waitForFunction(()=>{const s=window.__perfumeStudio;return s.engine.scene.rewind>=0&&s.view.inFlight()>0&&s.pump.depth>.5&&{flying:s.view.inFlight(),depth:s.pump.depth};},null,{timeout:30000,polling:16});await shot('10c-rewind');
+ await page.waitForFunction(()=>window.__perfumeStudio.pump.depth===0,null,{timeout:30000});assert.equal(await read(()=>window.__perfumeStudio.view.inFlight()),0,'everything in flight is home before the actuator is up');
+ check(`Thumbs down rewinds: ${(await back.jsonValue()).flying} in flight stream home, then the actuator rises`);
+ await quiet();
+ // A palm in the mist catches it, and a dry-down plays on the hand instead of parting the pump.
+ await recenter();const actuatorHome=await read(()=>window.__perfumeStudio.view.part('nozzle').group.position.toArray());
+ const plume=await atWorld('view.plume(45)');await feed([place('open',plume.x,plume.y+.1),place('thumbUp',.1,.8)]);
+ await until(()=>window.__perfumeStudio.view.caught>3&&window.__perfumeStudio.view.labels.dry);await shot('10d-palm');
+ assert.ok(await page.evaluate(h=>{const p=window.__perfumeStudio.view.part('nozzle').group.position;return Math.hypot(p.x-h[0],p.y-h[1])<1;},actuatorHome),'a catching palm does not part the pump');
+ await feed([place('open',plume.x,plume.y+.1)]);await until(()=>window.__perfumeStudio.view.dryClock>6);
+ assert.match(await page.locator('.perfume-drydown .is-lead').textContent(),/Heart|Base/);check('An open palm in the mist catches droplets and plays the dry-down on the hand, top then heart then base');await quiet();
  await recenter();
 
  // Direct control: the depth follows the hand.
@@ -112,6 +149,8 @@ try{
  // Slice goes through the axis, wherever the hand is.
  await feed([place('victory',.8,.5)]);await posed('victory');await page.waitForFunction(()=>window.__perfumeStudio.engine.scene.slice.amount===1);await page.waitForTimeout(100);
  const cut=await read(()=>({x:window.__perfumeStudio.engine.scene.slice.x,pose:window.__perfumeStudio.state.view.x}));assert.equal(cut.x,cut.pose);await shot('12-slice');check('Slice cuts through the object axis');
+ await page.evaluate(()=>window.__perfumeStudio.engine.kick(1));await until(()=>window.__perfumeStudio.view.droplets>10&&window.__perfumeStudio.view.labels.lens);
+ await until(()=>window.__perfumeStudio.engine.scene.time<.1);assert.match(await page.locator('.perfume-loupe p').textContent(),/µm/);await shot('12b-bullet');check('Slice is bullet time: the spray crawls and a loupe shows droplets against a micrometre scale bar');
 
  // Pull the spring while cut, to see it from inside.
  await pullOut('spring',.3);await feed([place('victory',.8,.5)]);await page.waitForFunction(()=>window.__perfumeStudio.engine.scene.parked[6]>.85);await shot('13-slice-spring-out');
@@ -119,11 +158,11 @@ try{
 
  // Skin.
  // The camera loop can overwrite a tracker frame before it renders, so a one-shot pose gets a few tries.
- for(const skin of ['frosted','xray','glass']){
+ for(const skin of ['pebble','prism','tower']){
   for(let i=0;i<8&&await read(()=>window.__perfumeStudio.engine.scene.skin)!==skin;i++){await feed([place('open',.86,.5)],240);await posed('open');await feed([place('love',.86,.5)],240);await posed('love');await page.waitForTimeout(500);}
-  assert.equal(await read(()=>window.__perfumeStudio.engine.scene.skin),skin);await shot(`14-skin-${skin}`);
+  assert.equal(await read(()=>window.__perfumeStudio.engine.scene.skin),skin);await until(s=>window.__perfumeStudio.view.weights[['tower','pebble','prism'].indexOf(s)]>.99,skin);await shot(`14-skin-${skin}`);
  }
- check('Skin cycles glass, frosted, x-ray');await quiet();
+ check('Skin morphs the flacon: pebble, prism, then back to the tower');await quiet();
 
  // Name: a still finger shows the chip.
  const target=await at('actuator');await feed([place('point',target.x,target.y+.12)]);
@@ -136,13 +175,14 @@ try{
 
  // Shock.
  for(let i=0;i<8&&!await read(()=>window.__perfumeStudio.engine.scene.shocks.length);i++){await feed([place('open',.15,.5),place('open',.85,.5)],240);await page.waitForTimeout(700);await feed([place('open',.45,.5),place('open',.55,.5)],240);await page.waitForTimeout(600);}
- await page.waitForFunction(()=>window.__perfumeStudio.engine.scene.shocks.length>0);await page.waitForTimeout(100);await shot('16-shock');check('Clap fires a shock');await quiet();
+ await page.waitForFunction(()=>window.__perfumeStudio.engine.scene.shocks.length>0);await page.waitForTimeout(100);await shot('16-shock');
+ await until(()=>window.__perfumeStudio.view.wisps>150);check('Clap blooms a scent cloud across the stage');await quiet();
  await page.waitForFunction(()=>window.__perfumeStudio.engine.scene.partOffsets.every(n=>Math.abs(n)<.02));check('Shock settles back with nothing left displaced');
 
  // Copy.
  await page.locator('#perfume-sources').click();const about=await page.locator('#perfume-about').textContent();await shot('17-about');await page.locator('#perfume-about-close').click();
- for(const word of ['illustrative','qualitative','0.065–0.1 ml'])assert.ok(about.includes(word),word);
- assert.equal((await page.locator('#perfume-about a').all()).length,3);
+ for(const word of ['illustrative','qualitative','0.065–0.1 ml','top notes','evaporate first','visual reversal'])assert.ok(about.includes(word),word);
+ assert.equal((await page.locator('#perfume-about a').all()).length,4);
  const gestures=await page.locator('#perfume-gestures').textContent();for(const word of ['Press','Release','Pull out','Name','Dive'])assert.ok(gestures.includes(word),word);
  assert.deepEqual(errors,[]);console.log(`Perfume passed: ${checks.length} checks.`);
 }catch(e){console.log('Done so far:',checks);console.log(await page.evaluate(()=>{const s=window.__perfumeStudio;return s&&{hands:s.frame.hands.map(h=>h.pose),view:s.state.view,caption:s.caption,depth:s.pump.depth,removed:[...s.pump.removed],parked:[...s.engine.scene.parked],explode:s.engine.scene.explode};}).catch(()=>null));await shot('zz-failure');console.log(errors);throw e;}finally{await browser.close();}

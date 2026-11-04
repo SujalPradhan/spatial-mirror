@@ -4,7 +4,8 @@ export type StitchKind='formed'|'skipped'|'loose'|'stationary'|'single-thread';
 export type FeedPhase='rise'|'forward'|'drop'|'return';
 export type LoopStage='idle'|'thrown'|'carried'|'casting'|'pulling';
 export interface MachineOptions {hookTimingOffset?:number;removed?:readonly Removable[]}
-export interface Stitch {index:number;kind:StitchKind;x:number;locked:boolean}
+/** tension is the top thread's when it was set, if not balanced: under .5 the lock sinks below the cloth, over it rises to the top. */
+export interface Stitch {index:number;kind:StitchKind;x:number;locked:boolean;tension?:number}
 export interface LoopPose {stage:LoopStage;open:number;apexDeg:number;pull:number}
 export interface FeedPose {phase:FeedPhase;x:number;y:number}
 export interface TakeUpPose {x:number;y:number;lift:number}
@@ -13,6 +14,8 @@ export interface MachineState extends MachinePose {stitches:Stitch[]}
 
 export const NEEDLE={crank:17,rod:52,tipAtBottom:-15.5,eyeAboveTip:2.5} as const;
 export const PITCH=7;
+/** A domestic lockstitch at full speed, in stitches a minute: one crank turn each. */
+export const FULL_SPM=800;
 /** Nominal crank angles: the hook meets the needle just after bottom dead centre, then the rest of the stitch follows. */
 export const TIMING={catch:212,cast:312,pull:340,set:352,takeUpLow:270,takeUpTop:350,feedRise:300,feedForward:352,feedDrop:70,feedReturn:100} as const;
 /** Needle rise above bottom dead centre over which a usable loop stands open. Below: no bulge yet. Above: drawn shut. */

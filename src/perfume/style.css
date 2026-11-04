@@ -1,4 +1,39 @@
-.perfume-page{--mirror-accent:#e8a02c;--mirror-accent-rgb:232,160,44}
+.perfume-page{--mirror-accent:#e9c27a;--mirror-accent-rgb:233,194,122;--perfume-gold:#f3cf86}
+.perfume-page .mirror-stage{background:radial-gradient(ellipse at 42% 46%,#1d1813 0%,#0d0c0d 46%,#050607 100%)}
+.perfume-page .mirror-mark{font-family:ui-serif,serif;font-weight:500;letter-spacing:.01em}
 .perfume-caption{position:absolute;z-index:3;left:50%;bottom:112px;transform:translateX(-50%);margin:0;max-width:min(680px,calc(100% - 32px));padding:7px 13px;border-left:2px solid var(--mirror-accent);border-radius:0 5px 5px 0;background:rgba(5,8,12,.68);backdrop-filter:blur(8px);pointer-events:none;font-size:13px;line-height:1.45;color:var(--mirror-ink);text-align:left}
 .perfume-caption:empty{display:none}
-@media(max-width:900px){.perfume-caption{bottom:188px;font-size:12px}}
+.perfume-overlay{position:absolute;inset:0;z-index:3;pointer-events:none;overflow:hidden}
+.perfume-overlay>*:not(svg){position:absolute;left:0;top:0;opacity:0;visibility:hidden;will-change:transform,opacity}
+.perfume-overlay>.is-on{visibility:visible}
+.perfume-leaders{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+.perfume-leaders path{fill:none;stroke:var(--perfume-gold);stroke-width:.8;opacity:.8}
+.perfume-leaders circle{fill:var(--perfume-gold)}
+.perfume-tag{transform-origin:left center;white-space:nowrap;margin-top:-9px;padding-left:7px}
+.perfume-tag[data-align=right]{translate:-100% 0;text-align:right;padding:0 7px 0 0}
+.perfume-tag b{display:block;font:500 13px/1.25 ui-serif,serif;letter-spacing:.02em;color:#fbecd0}
+.perfume-tag b i{font:600 9px/1 'Manrope',system-ui,sans-serif;font-style:normal;letter-spacing:.14em;color:var(--perfume-gold);margin-right:7px;vertical-align:2px}
+.perfume-tag small{display:block;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:rgba(243,207,134,.66)}
+.perfume-atelier-title{margin:0;white-space:nowrap}
+.perfume-atelier-title b{display:block;font:italic 400 30px/1 ui-serif,serif;color:#fbecd0;letter-spacing:.01em}
+.perfume-atelier-title span{display:block;margin-top:6px;font-size:9.5px;letter-spacing:.2em;text-transform:uppercase;color:rgba(243,207,134,.7)}
+.perfume-note{padding:4px 9px 4px 7px;border-radius:7px;background:rgba(8,7,7,.55);backdrop-filter:blur(6px);display:grid;grid-template-columns:auto auto;align-items:baseline;gap:0 7px;white-space:nowrap;transition:opacity .4s}
+.perfume-note i{grid-row:span 2;align-self:center;width:8px;height:8px;border-radius:50%;background:var(--note);box-shadow:0 0 12px 3px var(--note)}
+.perfume-note b{font:500 15px/1.15 ui-serif,serif;color:#fff6e6;letter-spacing:.02em}
+.perfume-note b:after{content:' notes';font:400 9px/1 'DM Sans',system-ui,sans-serif;letter-spacing:.16em;text-transform:uppercase;color:rgba(255,246,230,.55)}
+.perfume-note span{font-size:11px;letter-spacing:.04em;color:var(--note);text-shadow:0 1px 8px rgba(0,0,0,.9)}
+.perfume-drydown{min-width:212px;padding:11px 13px 9px;border:1px solid rgba(243,207,134,.28);border-radius:10px;background:rgba(10,9,9,.72);backdrop-filter:blur(10px);transition:opacity .3s}
+.perfume-drydown>b{display:block;font:italic 400 17px/1.1 ui-serif,serif;color:#fbecd0}
+.perfume-drydown>small{display:block;margin:2px 0 8px;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:rgba(243,207,134,.66)}
+.perfume-dry-row{display:grid;grid-template-columns:9px 44px 1fr;grid-template-rows:auto 3px;align-items:center;gap:2px 7px;padding:3px 0;opacity:.5;transition:opacity .3s}
+.perfume-dry-row.is-lead{opacity:1}
+.perfume-dry-row i{width:7px;height:7px;border-radius:50%;background:var(--note);box-shadow:0 0 8px var(--note)}
+.perfume-dry-row b{font:500 12px/1 ui-serif,serif;color:#fff6e6}
+.perfume-dry-row span{font-size:10.5px;color:var(--note)}
+.perfume-dry-row em{grid-column:2/-1;height:2px;border-radius:2px;background:rgba(255,255,255,.08);overflow:hidden}
+.perfume-dry-row s{display:block;height:100%;width:0;background:var(--note);text-decoration:none}
+.perfume-loupe{width:170px;text-align:center}
+.perfume-loupe canvas{display:block;width:170px;height:170px;border-radius:50%;box-shadow:0 0 0 1px rgba(243,207,134,.7),0 0 0 5px rgba(243,207,134,.1),0 10px 40px rgba(0,0,0,.6)}
+.perfume-loupe p{margin:8px -40px 0;font-size:10.5px;letter-spacing:.06em;color:rgba(243,207,134,.85)}
+@media(max-width:900px){.perfume-caption{bottom:188px;font-size:12px}.perfume-atelier-title b{font-size:22px}.perfume-drydown{min-width:180px}}
+@media(prefers-reduced-motion:reduce){.perfume-note,.perfume-drydown,.perfume-dry-row{transition:none}}

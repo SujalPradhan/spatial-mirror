@@ -1,4 +1,6 @@
-/** A generic push-pump fine-mist perfume spray as plain data, millimetres, y up, bottle base at y=0. Representative, not a drawing of any product. */
+import type {BufferGeometry} from 'three';
+import {bottleForms,capForms,collarForm,KNURL_SEGMENTS,liquidRows,silhouettes,turned} from './flacon';
+/** A generic push-pump fine-mist perfume spray as plain data, millimetres, y up, bottle base at y=0. Representative, not a drawing of any product; the flacons are original. */
 export type PartId='bottle'|'cap'|'collar'|'actuator'|'nozzle'|'stem'|'piston'|'spring'|'body'|'ball'|'tube'|'liquid';
 export type Profile=readonly (readonly [r:number,y:number])[];
 export type Vec3=readonly [number,number,number];
@@ -19,7 +21,9 @@ export type PartShape=
    axis?:'x';at?:Vec3}
  |{kind:'helix';radius:number;wire:number;turns:number;y0:number;y1:number;
    /** Dead coils squared off at each end, as on a real compression spring. */
-   endTurns:number};
+   endTurns:number}
+ /** Faceted or morphing solids a lathe cannot turn. */
+ |{kind:'geometry';build:()=>BufferGeometry};
 export interface PartDef {id:string;title:string;role:string;shape:PartShape;look:PartLook;explode:Vec3;removable:boolean}
 
 export const dims={
@@ -35,19 +39,19 @@ export const dims={
 /** Half-disc for a lathe, bottom pole first, walked up the +r side. */
 const ballProfile=(y:number,r:number,n=14):[number,number][]=>Array.from({length:n+1},(_,i)=>{const a=-Math.PI/2+Math.PI*i/n;return [Math.max(0,Math.cos(a)*r),y+Math.sin(a)*r];});
 
-const plastic='#e9e6df',satin='#c9c2b4';
+const plastic='#e9e6df';
 export const pumpParts:PartDef[]=[
- {id:'bottle',title:'Glass bottle',role:'Holds the liquid and the air that replaces each dose.',removable:false,explode:[-36,0,0],
-  look:{color:'#20201e',opacity:.16,roughness:.04,shell:true,cut:'#8fc4d4',layer:1,pickBias:.2},
-  shape:{kind:'lathe',profile:[[0,0],[15,0],[17.8,.7],[19,3.4],[19,60],[18.5,63.6],[17,66],[12.4,68.6],[9.6,70],[7.4,71],[7.1,72],[7.1,75],[7.9,75.6],[7.9,77],[7.4,78],[6,78],[5.6,77.4],[5.6,70.5],[9,68.6],[13,66.9],[15.6,65],[16.6,63],[16.6,7],[15.6,5.5],[13,5],[0,5]]}},
- {id:'liquid',title:'Liquid',role:'The perfume, pulled up the dip tube one dose at a time.',removable:false,explode:[-36,0,0],
+ {id:'bottle',title:'Crystal flacon',role:'Holds the liquid and the air that replaces each dose. Thick glass round a 50 ml bore.',removable:false,explode:[-40,0,0],
+  look:{color:'#e9f3f5',opacity:.16,roughness:.04,shell:true,cut:'#cfe3e8',layer:1,pickBias:.2},
+  shape:{kind:'geometry',build:()=>turned(silhouettes.map(s=>bottleForms[s]),96)}},
+ {id:'liquid',title:'Liquid',role:'The perfume, pulled up the dip tube one dose at a time.',removable:false,explode:[-40,0,0],
   look:{color:'#e88208',opacity:.8,roughness:.12,shell:true,cut:'#e8a02c',layer:0,selfLit:.5},
-  shape:{kind:'lathe',profile:[[0,5.05],[13,5.05],[15.5,5.55],[16.52,7],[16.52,62.9],[16,62.7],[0,62.7]]}},
- {id:'cap',title:'Outer cap',role:'Keeps the actuator from being pressed in a bag.',removable:true,explode:[-36,42,0],
-  look:{color:'#23262b',metalness:.2,roughness:.32,cut:'#4a4f57',layer:2},
-  shape:{kind:'lathe',profile:[[0,105],[8,105],[10,104.4],[10.6,103],[10.6,73.4],[9.3,73.4],[9.3,103.2],[8,103.8],[0,103.8]]}},
+  shape:{kind:'geometry',build:()=>turned([{rows:liquidRows,section:()=>1,crease:60}],72)}},
+ {id:'cap',title:'Sculpted cap',role:'Keeps the actuator from being pressed in a bag. It lifts away while you work.',removable:true,explode:[-40,40,0],
+  look:{color:'#f2d9a6',metalness:.6,roughness:.2,shell:true,cut:'#e7cf9c',layer:2,pickBias:.1},
+  shape:{kind:'geometry',build:()=>turned(silhouettes.map(s=>capForms[s]),96)}},
  {id:'tube',title:'Dip tube',role:'Reaches the bottom so the pump drinks liquid, not air.',removable:true,explode:[44,-1,0],
-  look:{color:'#f3efe6',opacity:.85,roughness:.3,cut:'#d9d3c6',layer:2},
+  look:{color:'#f3efe6',roughness:.3,cut:'#d9d3c6',layer:2},
   shape:{kind:'lathe',profile:[[.75,7],[1.25,7],[1.25,53],[.75,53]]}},
  {id:'body',title:'Pump body',role:'The cylinder the piston seals against, and the valve seat at its foot.',removable:false,explode:[16,-35,0],
   look:{color:plastic,roughness:.42,cut:'#f4f0e7',layer:2},
@@ -64,12 +68,12 @@ export const pumpParts:PartDef[]=[
  {id:'stem',title:'Stem',role:'Hollow pipe carrying pressurised liquid up to the actuator.',removable:false,explode:[16,37,0],
   look:{color:plastic,roughness:.36,cut:'#a9c7d8',layer:3},
   shape:{kind:'lathe',profile:[[.6,76.2],[1.7,76.2],[1.7,93],[.6,93]]}},
- {id:'collar',title:'Crimped collar',role:'Metal band that clamps the pump to the bottle neck.',removable:false,explode:[16,27,0],
-  look:{color:satin,metalness:1,roughness:.3,cut:'#f2d9a6',layer:3},
-  shape:{kind:'lathe',profile:[[7.25,74.6],[7.6,74.2],[8.4,74.2],[8.7,74.8],[8.7,81],[8.3,81.6],[4,81.6],[3.6,81.3],[3.6,81.1],[8.2,81.1],[8.2,75.1],[7.25,74.9]]}},
+ {id:'collar',title:'Knurled collar',role:'Heavy metal band, crimped under, that clamps the pump to the bottle neck.',removable:false,explode:[16,27,0],
+  look:{color:'#e9c27a',metalness:1,roughness:.2,cut:'#f2d9a6',layer:3},
+  shape:{kind:'geometry',build:()=>turned([collarForm],KNURL_SEGMENTS)}},
  {id:'actuator',title:'Actuator',role:'The button: finger force goes in, the sideways duct leads out.',removable:false,explode:[16,56,0],
-  look:{color:satin,metalness:1,roughness:.26,cut:'#b5ab96',layer:2},
-  shape:{kind:'lathe',profile:[[5.4,87.9],[6.4,87.9],[6.4,99],[5.9,99.8],[3,99.7],[0,99.5],[0,90.5],[5.4,90.5]]}},
+  look:{color:'#e9c27a',metalness:1,roughness:.18,cut:'#d8b77a',layer:2},
+  shape:{kind:'lathe',profile:[[5.4,87.9],[6.2,87.9],[6.5,88.4],[6.5,98.7],[6.1,99.5],[3,99.8],[0,99.9],[0,90.5],[5.4,90.5]]}},
  {id:'nozzle',title:'Nozzle insert',role:'Swirl chamber and orifice: spins the liquid so it leaves as a hollow cone of droplets.',removable:true,explode:[32,56,0],
   look:{color:'#3a3f46',roughness:.4,cut:'#59616b',layer:3,pickBias:-.4},
   shape:{kind:'lathe',axis:'x',at:[3.9,95.5,0],profile:[[1,0],[1.7,0],[1.7,3.1],[1.35,3.4],[.28,3.4],[.28,3],[1,2.4]]}},

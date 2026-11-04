@@ -6,6 +6,8 @@ import {dims,type P} from './parts';
 const {hook:CENTRE,caseR:CASE_R,caseW:CASE_W,hookOut:HOOK_OUT,clothTop:CLOTH_TOP,clothUnder:CLOTH_UNDER,needleZ:NEEDLE_Z,takeUp:TAKE_UP}=dims;
 const LOOP_Z=CASE_W+.9,FIRST_LOCK=-PITCH,LOOSE_LOCK=-6,TAIL=44;
 export const LOCKS_DRAWN=16;
+/** Path index of the tension discs: thread before them carries no tension. */
+export const DISCS=6;
 const SPOOL:P[]=[[102,146,0],[97,163,1],[92,166,0],[62,137,0],[34,118,24],[32,104,25.5],[34,94,27],[33,80,27],[30,74,26.5],[27,69,25.5],[23,74,26]];
 const GUIDES_DOWN:P[]=[[4,58,25],[3,41,21],[2.2,36,14],[1.2,35,4]];
 const BOBBIN_EXIT:P=[2.5,-15.7,0];
@@ -14,7 +16,8 @@ const clamp=(n:number,a:number,b:number)=>Math.max(a,Math.min(b,n));
 const smooth=(n:number)=>{const u=clamp(n,0,1);return u*u*(3-2*u);};
 const lerp3=(a:P,b:P,u:number):P=>[mix(a[0],b[0],u),mix(a[1],b[1],u),mix(a[2],b[2],u)];
 
-const lockY=(s:{kind:string})=>s.kind==='loose'?LOOSE_LOCK:0;
+/** Where the lock sits: a missing take-up or a slack top thread lets it sink under the cloth, a tight one drags it up to the top. */
+const lockY=(s:{kind:string;tension?:number})=>{const t=s.tension;return s.kind==='loose'?LOOSE_LOCK:t===undefined?0:t<.5?(.5-t)*2*LOOSE_LOCK:(t-.5)*2*(CLOTH_TOP+.5);};
 const lastLock=(list:Stitch[])=>{for(let i=list.length-1;i>=0;i--)if(list[i].locked)return list[i];return null;};
 /** A loop's front or back leg: leaves the hole, spreads over a case face, rejoins at the apex, bowed so the pair reads as an open loop. */
 function leg(from:P,apex:P,side:1|-1):P[] {
@@ -25,7 +28,7 @@ function leg(from:P,apex:P,side:1|-1):P[] {
  }
  return out;
 }
-function apexOf(s:MachineState,hole:number):P {
+export function apexOf(s:MachineState,hole:number):P {
  const a=s.loop.apexDeg*Math.PI/180,settle=s.loop.stage==='casting'||s.loop.stage==='pulling'?smooth((s.loop.apexDeg-190)/120):0,r=mix(HOOK_OUT+.7,CASE_R+1.4,settle);
  // Taken from where the thrown bulge stands, so the catch has no jump.
  const rim=lerp3([-3,s.eye+(CLOTH_UNDER-s.eye)*.3,-4.2],[r*Math.sin(a),CENTRE[1]+r*Math.cos(a),0],smooth(s.loop.apexDeg/45));
@@ -33,7 +36,11 @@ function apexOf(s:MachineState,hole:number):P {
  const target=s.outcome==='single-thread'?CLOTH_TOP+.2:s.outcome==='loose'?LOOSE_LOCK-.25:-.25;
  return lerp3(rim,[hole,target,0],s.loop.pull);
 }
-export function topPath(s:MachineState,o:MachineOptions):P[] {
+/** A snapped thread hangs from the tension discs and the needle runs empty. */
+export const SNAPPED:P[]=[...SPOOL.slice(0,7),[33.5,86,27.4],[32,78,28.5],[33,71,29.5]];
+/** slack is 0 balanced, up to 1 with the thread fed loose, negative pulled tight: the thrown loop grows or shrinks with it. */
+export function topPath(s:MachineState,o:MachineOptions,slack=0,broken=false):P[] {
+ if(broken)return SNAPPED;
  const pts:P[]=[...SPOOL],hole=0,e=s.eye,lock=lastLock(s.stitches),lx=(lock?lock.x:FIRST_LOCK)-s.clothTravel,ly=lock?lockY(lock):0;
  if(!o.removed?.includes('takeUp'))pts.push([TAKE_UP[0]+s.takeUp.x+.8,TAKE_UP[1]+s.takeUp.y-1,TAKE_UP[2]-.6],[TAKE_UP[0]+s.takeUp.x,TAKE_UP[1]+s.takeUp.y,TAKE_UP[2]],[TAKE_UP[0]+s.takeUp.x-.8,TAKE_UP[1]+s.takeUp.y-1,TAKE_UP[2]+.2]);
  pts.push(...GUIDES_DOWN,[0,e+21.1,NEEDLE_Z+2.2],[0,e+12,NEEDLE_Z+.6],[0,e+6,NEEDLE_Z+.5],[0,e+1,NEEDLE_Z+.5],[0,e+.1,NEEDLE_Z+.2],[0,e,NEEDLE_Z-.3],[0,e-.2,NEEDLE_Z-1]);
@@ -47,7 +54,7 @@ export function topPath(s:MachineState,o:MachineOptions):P[] {
   return pts;
  }
  if(above){if(lx<-1.5*PITCH)pts.push([-PITCH*.6,CLOTH_TOP+.3,-.1]);pts.push([lx+.3,CLOTH_TOP+.3,-.1],[lx+.05,CLOTH_TOP-.1,-.3],[lx,ly+.6,-.36],[lx,ly-.25,0]);return pts;}
- const o2=s.loop.open,gap=Math.max(.1,CLOTH_UNDER-e);
+ const o2=s.loop.open*clamp(1+slack,.35,2.2),gap=Math.max(.1,CLOTH_UNDER-e);
  if(below)pts.push([-1.2*o2,e+gap*.08,-.8-2.2*o2],[-3*o2,e+gap*.2,-.9-3.8*o2],[-3.2*o2,e+gap*.38,-.9-3.4*o2],[-1.2*o2,e+gap*.66,-.6-1.4*o2],[hole,CLOTH_UNDER-.2,-.1]);
  pts.push(surface[0],...surface.slice(1));
  return pts;
@@ -72,7 +79,9 @@ export function settledPaths(list:Stitch[]):{top:P[];bobbin:P[]} {
  const top:P[]=[[start-TAIL,CLOTH_TOP+.28,0],[start-TAIL/2,CLOTH_TOP+.28,0]],bobbin:P[]=[[start-TAIL,CLOTH_UNDER-.3,0],[start-TAIL/2,CLOTH_UNDER-.3,0]];
  const add=(x:number,ly:number,z=0)=>{
   const y=Math.min(CLOTH_UNDER-.3,ly);
-  top.push([x-1.4,CLOTH_TOP+.28,z],[x-.3,CLOTH_TOP+.05,z+.2],[x,ly+.6,z+.36],[x,ly-.25,z],[x,ly+.6,z-.36],[x+.3,CLOTH_TOP+.05,z-.2],[x+1.4,CLOTH_TOP+.28,z]);
+  // Slack leaves a loop hanging under the cloth; tight puckers the top surface between holes.
+  const loop=ly<-.5?Math.min(3.2,-ly*.6):0,pucker=ly>.4?ly*.45:0,lift=CLOTH_TOP+.28+pucker;
+  top.push([x-1.4,lift,z],[x-.3,CLOTH_TOP+.05,z+.2],[x,ly+.6,z+.36+loop],[x,ly-.25-loop*.4,z],[x,ly+.6,z-.36-loop],[x+.3,CLOTH_TOP+.05,z-.2],[x+1.4,lift,z]);
   bobbin.push([x-1.3,y,z],[x-.4,ly-.3,z],[x,ly+.55,z],[x+.4,ly-.3,z],[x+1.3,y,z]);
  };
  if(!first)add(FIRST_LOCK,0);

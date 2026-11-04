@@ -102,7 +102,8 @@ const lowerGeometry=()=>merge(rod(3,3,152,'x',76,0,0),rod(9,9,8,'x',150,0,0,36),
 const spoolGeometry=():T.BufferGeometry=>merge(rod(7,7,3,'y',92,132,0,36),rod(12,12,2,'y',92,133,0,48),rod(10,10,26,'y',92,146,0,48),rod(12,12,2,'y',92,159,0,48));
 const tensionGeometry=()=>merge(rod(8,8,1.2,'z',34,86,24.4,40),rod(8,6,1.4,'z',34,86,25.8,40),rod(6,8,1.4,'z',34,86,27.6,40),rod(2,2,10,'z',34,86,27,20),rod(3.4,3.4,2,'z',34,86,31,6));
 const guideGeometry=()=>merge(rod(1.2,1.2,36,'y',92,146,0,10),rod(1,1,8,'y',62,132,0,10),ring(1.4,.36,62,137,0),ring(1.4,.36,34,118,24),ring(1.4,.36,27,69,25.5),ring(1.2,.34,4,58,25),ring(1.2,.34,3,41,21),box(3,1.2,17,3,36.5,13));
-const clothGeometry=()=>merge(box(306,1.5,30,-30,.82,0),box(306,1.5,30,-30,-.82,0));
+/** Deep enough for a free-motion drawing in its hoop. */
+const clothGeometry=()=>merge(box(306,1.5,120,-30,.82,0),box(306,1.5,120,-30,-.82,0));
 const marksGeometry=()=>merge(...Array.from({length:21},(_,i)=>box(5,.14,.9,-182+i*clothMark+.0,dims.clothTop+.07,9.8)),...Array.from({length:21},(_,i)=>box(5,.14,.9,-175+i*clothMark,dims.clothTop+.07,-9.8)));
 const bobbinCore=()=>rod(9.4,9.4,6.2,'z',H[0],H[1],0,48);
 const bobbinRims=()=>merge(ring(10.5,.42,H[0],H[1],3.4),ring(10.5,.42,H[0],H[1],-3.4),rod(10.5,10.5,.5,'z',H[0],H[1],-3.4,48),rod(2,2,7.4,'z',H[0],H[1],0,20));

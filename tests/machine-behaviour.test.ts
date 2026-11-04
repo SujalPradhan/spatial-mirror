@@ -1,13 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {MachineBehaviour,STITCH_CAP,throwBeat} from '../src/machine/behaviour';
+import {EMBROIDERY_CAP,FULL,SLOW,STITCH_CAP,throwBeat} from '../src/machine/behaviour';
+import {machineSkins} from '../src/machine/contracts';
 import {MachineEngine} from '../src/machine/engine';
 import {initialMachine,validateMachine} from '../src/machine/state';
 import {bodyParts,machineExtras,machineParts} from '../src/machine/parts';
 import {PITCH} from '../src/machine/model';
-import type {GestureFrame} from '../src/mirror/contracts';
+import type {GestureEvent,GestureFrame,HandPose,TrackedHand} from '../src/mirror/contracts';
 
-const world={partCount:machineParts.length,mirrorToWorld:(p:{x:number;y:number;z:number})=>p,partAt:()=>-1,partInfo:(i:number)=>machineParts[i],screenOf:()=>({x:0,y:0})};
+let threaded=false;
+const world={partCount:machineParts.length,mirrorToWorld:(p:{x:number;y:number;z:number})=>p,partAt:()=>-1,partInfo:(i:number)=>machineParts[i],screenOf:()=>({x:0,y:0}),onThread:()=>threaded};
 const frame:GestureFrame={at:0,hands:[],events:[]};
 const fresh=()=>{const e=new MachineEngine(world),view=initialMachine().view;return {e,m:e.machine,view,step:(n=1)=>{let out;for(let i=0;i<n;i++)out=e.step(frame,.02,view,false);return out!;}};};
 /** Sews by moving the crank in small jumps, as a stepping frame would. */
@@ -82,4 +84,65 @@ test('a removal is hidden, and goes close to show the consequence',()=>{
 test('saved state is validated and allow-listed',()=>{
  const good=initialMachine();assert.deepEqual(validateMachine({...good,extra:1}),good);
  assert.throws(()=>validateMachine({...good,phase:500}));assert.throws(()=>validateMachine({...good,schema:2}));
+});
+
+/** A tracked hand at one point: every joint there, so palm, pinch and fingertip agree. */
+const hand=(pose:HandPose,x:number,y:number,id=1):TrackedHand=>{const p={x,y,z:0};return {id,side:'right',pose,landmarks:Array.from({length:21},()=>({...p})),palm:p,indexTip:p,pinch:p,orientation:null,velocity:{x:0,y:0},poseAge:5};};
+let clock=0;
+const live=(t:ReturnType<typeof fresh>,hands:TrackedHand[],events:GestureEvent[]=[],dt=1/60)=>t.e.step({at:++clock,hands,events},dt,t.view,false);
+
+test('three skins: solid, x-ray, light painting, and painting exposes the crank it has seen',()=>{
+ assert.deepEqual(machineSkins,['glass','xray','paint']);
+ const t=fresh();for(let i=0;i<2;i++)live(t,[hand('love',0,0)],[{type:'pose',handId:1,pose:'love'}]),live(t,[],[{type:'lost',handId:1}]);
+ assert.equal(t.step().scene.skin,'paint');sew(t,1);assert.ok(t.step().scene.exposure>=330,'a turn exposed');
+});
+test('one open hand steers the cloth the other way, and the holes trace the hand',()=>{
+ const t=fresh();for(let i=0;i<20;i++)live(t,[hand('open',0,0)]);
+ assert.equal(t.m.drawing,true);assert.ok(Math.abs(t.m.omega)<1,'the regulator holds the needle while the hand is still');
+ for(let i=1;i<=120;i++)live(t,[hand('open',i*.01,0)]);
+ assert.ok(t.m.ox<-10,'cloth slides opposite the hand');assert.ok(t.m.embroidery.count>5,'stitches while moving');
+ const e=t.m.embroidery,xs=Array.from(e.x.slice(0,e.count));assert.ok(xs.at(-1)!>xs[0]+8,'the line runs the way the hand went');
+ assert.equal(t.m.stitches.length,0,'free motion leaves the straight seam alone');
+ for(let i=0;i<40;i++)live(t,[]);assert.equal(t.m.drawing,false);assert.ok(t.step().scene.draw>.9,'the view lingers on the drawing');
+});
+test('free motion keeps the newest 400 holes',()=>{
+ const t=fresh();for(let i=0;i<10;i++)live(t,[hand('open',0,0)]);
+ for(let i=0;i<4000;i++)live(t,[hand('open',Math.sin(i/30)*1.2,Math.cos(i/23)*.8)]);
+ assert.equal(t.m.embroidery.count,EMBROIDERY_CAP);assert.ok(t.m.count>EMBROIDERY_CAP);
+});
+test('a pinch on the thread sets its tension, the stitches follow, and too far snaps it',()=>{
+ threaded=true;
+ try{
+  const t=fresh();live(t,[hand('pinch',0,0)]);for(let i=1;i<=30;i++)live(t,[hand('pinch',0,-i*.04)]);
+  assert.ok(t.m.tension<.2,'down feeds slack');assert.match(t.m.caption,/Slack/);
+  sew(t,1);live(t,[hand('pinch',0,-1.2)]);assert.ok(t.m.stitches.at(-1)!.tension!<.3,'a slack stitch is recorded');
+  for(let i=1;i<=60;i++)live(t,[hand('pinch',0,-1.2+i*.06)]);
+  assert.equal(t.m.broken,true);assert.match(t.m.caption,/Snapped/);
+  sew(t,1);live(t,[hand('pinch',0,2.4)]);assert.equal(t.m.stitches.at(-1)!.kind,'skipped','no top thread, no stitch');
+  for(let i=0;i<120;i++)live(t,[]);assert.equal(t.m.broken,false,'letting go rethreads');assert.ok(Math.abs(t.m.tension-.5)<.1,'and the discs take over');
+ }finally{threaded=false;}
+});
+test('a pinch off the thread does not take it',()=>{const t=fresh();for(let i=0;i<20;i++)live(t,[hand('pinch',0,-i*.05)]);assert.equal(t.m.tension,.5);assert.equal(t.m.held,null);});
+test('a clap stops time mid-stitch; another, or six seconds, lets it run',()=>{
+ const t=fresh();t.m.omega=900;live(t,[]);const at=t.m.crank;
+ live(t,[],[{type:'clap',x:0,y:0}]);assert.equal(t.m.frozen,true);for(let i=0;i<60;i++)live(t,[]);
+ assert.ok(Math.abs(t.m.crank-at)<20,'stopped');assert.match(t.m.caption,/Time stopped/);
+ assert.ok(t.step().scene.partOffsets.every(v=>v===0),'the clap does not jolt the parts');
+ live(t,[],[{type:'clap',x:0,y:0}]);assert.equal(t.m.frozen,false);assert.ok(t.m.omega>0,'the motor picks up where it was');
+ live(t,[],[{type:'clap',x:0,y:0}]);for(let i=0;i<6.2*60;i++)live(t,[]);assert.equal(t.m.frozen,false);
+});
+test('Slice films full speed fifty times slower',()=>{
+ const t=fresh();for(let i=0;i<30;i++)live(t,[hand('victory',0,0)]);
+ const a=t.m.crank;live(t,[hand('victory',0,0)],[],.05);assert.ok(Math.abs(t.m.crank-a-FULL/SLOW*.05)<1e-6);assert.equal(t.m.spm,800);assert.ok(t.m.realMs>0);
+});
+test('Run ramps to full speed under a strobe; reduced motion keeps it gentle and unstrobed',()=>{
+ const t=fresh();for(let i=0;i<300;i++)live(t,[hand('thumbUp',0,0)]);
+ assert.ok(t.m.spm>760,String(t.m.spm));assert.equal(t.m.strobing,true);
+ const shown=t.step().scene.machine.crank;let moved=0;for(let i=0;i<3;i++){const c=live(t,[hand('thumbUp',0,0)]).scene.machine.crank;if(c!==shown)moved++;}
+ assert.ok(moved<3,'the pose only changes on a flash');
+ const r=fresh();r.m.reduced=true;for(let i=0;i<300;i++)live(r,[hand('thumbUp',0,0)]);assert.ok(r.m.spm<80);assert.equal(r.m.strobing,false);
+});
+test('Reverse unpicks, and each lock pulled out is shown leaving',()=>{
+ const t=fresh();sew(t,4);for(let i=0;i<200;i++)live(t,[hand('thumbDown',0,0)]);
+ assert.ok(t.m.count<4);assert.ok(t.step().scene.unpicked.length>0);assert.match(t.m.caption,/Unpicking/);
 });

@@ -17,6 +17,8 @@ export class MachineEngine extends MirrorEngine<MachineSkin,MachineSceneExtra,Ma
  get live(){return this.context.scene;}
  get caption(){return this.machine.caption;}
  screenOf(id:string){return (this.world as MachineWorld).screenOf(id);}
+ /** A point on the top thread, 0..1 on the stage, where a pinch would take hold. */
+ threadScreen(rise=.5){return (this.world as MachineWorld&{threadScreen?(r:number):{x:number;y:number}}).threadScreen?.(rise)??{x:.5,y:.3};}
  restore(){this.machine.restore();}
  cycleTiming(){return this.context.frozen?null:this.machine.cycleTiming();}
  toggleFraming(){if(!this.context.frozen)this.machine.setClose(!this.machine.close);return this.machine.close;}

@@ -1,13 +1,13 @@
 import {MirrorEngine} from '../mirror/engine';
 import type {GestureFrame,MirrorViewState} from '../mirror/contracts';
-import {meshSkins,type MeshSkin} from '../mirror/parts-view';
 import {PerfumeBehaviour} from './behaviour';
-import type {PerfumeOutput,PerfumeSceneExtra,PerfumeSound,PerfumeWorld} from './contracts';
+import type {PerfumeOutput,PerfumeSceneExtra,PerfumeSkin,PerfumeSound,PerfumeWorld} from './contracts';
+import {silhouettes} from './flacon';
 
 /** position is the phone's pump setting, not the live stem, so a hand press never leaks into saved phase. 360 would wrap to 0 in the shell. */
-export class PerfumeEngine extends MirrorEngine<MeshSkin,PerfumeSceneExtra,PerfumeSound> {
+export class PerfumeEngine extends MirrorEngine<PerfumeSkin,PerfumeSceneExtra,PerfumeSound> {
  private mechanism:PerfumeBehaviour;
- constructor(world:PerfumeWorld){const mechanism=new PerfumeBehaviour(world);super(world,mechanism,meshSkins);this.mechanism=mechanism;}
+ constructor(world:PerfumeWorld){const mechanism=new PerfumeBehaviour(world);super(world,mechanism,silhouettes);this.mechanism=mechanism;}
  get pump(){return this.mechanism.pump;}
  get lastSpray(){return this.mechanism.lastSpray;}
  get caption(){return this.scene.caption;}

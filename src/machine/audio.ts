@@ -3,7 +3,7 @@ import type {MachineSound} from './contracts';
 
 type Cue=Exclude<MachineSound['type'],'motor'>;
 const gaps:Record<Cue,number>={stitch:.06,fault:.12,pluck:.05,snap:.05,shock:.2,skin:.15,slice:.2,tear:.5};
-const LIMIT=16,GLIDE=.1,MOTOR_MAX=2.5;
+const LIMIT=16,GLIDE=.1,MOTOR_MAX=800/60;
 
 /** A motor hum that rises with speed, a tick per stitch, and short cues built from one noise buffer. */
 export class MachineAudio implements MirrorAudio<MachineSound> {
@@ -31,7 +31,7 @@ export class MachineAudio implements MirrorAudio<MachineSound> {
  }
  private drive(speed:number){
   const ctx=this.ctx,m=this.motor;if(!ctx||!m||!Number.isFinite(speed))return;
-  const t=ctx.currentTime,n=Math.min(1,Math.abs(speed)/MOTOR_MAX);
+  const t=ctx.currentTime,n=Math.min(1,Math.sqrt(Math.abs(speed)/MOTOR_MAX));
   m.gain.gain.setTargetAtTime(n<.01?0:.04+n*.16,t,GLIDE);m.filter.frequency.setTargetAtTime(200+n*1200,t,GLIDE);m.osc.frequency.setTargetAtTime(50+n*110,t,GLIDE);
  }
  private env(at:number,peak:number,length:number){

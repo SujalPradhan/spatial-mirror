@@ -321,6 +321,8 @@ export class MeshPartsView implements MirrorView<MeshScene> {
   return e?{id:e.spec.id,title:e.spec.title,role:e.spec.role,removable:e.spec.removable}:{id:'',title:'',role:'',removable:false};
  }
  part(id:string):MeshPart|undefined {return this.byId.get(id);}
+ /** The live colour of a part's cut face, for an object that retints a part after building it. */
+ cutColor(id:string):T.Color|undefined {return this.byId.get(id)?.capColor;}
  draw(scene:MeshScene,now:number) {
   if(this.disposed||this.contextLost)return;
   const dt=Math.min(.1,Math.max(0,(now-this.lastNow)/1000));

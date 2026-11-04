@@ -1,8 +1,8 @@
 import type {MirrorAudio} from '../mirror/contracts';
 import type {PerfumeSound} from './contracts';
 
-const gaps:Record<PerfumeSound['type'],number>={pluck:.05,snap:.05,shock:.2,skin:.15,slice:.2,tear:.4,click:.05,clunk:.2,spray:.12};
-/** Small and dry: a pump is clicks and air, with no drone behind it. */
+const gaps:Record<PerfumeSound['type'],number>={pluck:.05,snap:.05,shock:.2,skin:.15,slice:.2,tear:.4,click:.05,clunk:.2,spray:.12,rewind:.6};
+/** Small and dry: a pump is clicks and air, with no drone behind it. A clap blooms, and a rewind swells like a reversed breath. */
 export class PerfumeAudio implements MirrorAudio<PerfumeSound> {
  private ctx:AudioContext|null=null;private master:GainNode|null=null;private noise:AudioBuffer|null=null;private last=new Map<string,number>();private muted=false;
  async start(){
@@ -21,7 +21,8 @@ export class PerfumeAudio implements MirrorAudio<PerfumeSound> {
   else if(s.type==='pluck'){this.tone('triangle',330,220,now,.08,.12);}
   else if(s.type==='snap'){this.tone('sine',520,780,now,.09,.14);}
   else if(s.type==='tear'){this.air(now,.18,'bandpass',500,2000,.16);this.tone('sine',240,120,now,.2,.14);}
-  else if(s.type==='shock'){this.tone('sine',80,28,now,.5,.46);this.air(now,.25,'lowpass',1600,160,.2);}
+  else if(s.type==='shock'){this.tone('sine',90,40,now,.5,.3);this.air(now,.9,'bandpass',5200,900,.16);this.tone('sine',1320,1310,now+.05,.9,.04);this.tone('sine',1980,1975,now+.09,.8,.03);}
+  else if(s.type==='rewind'){this.swell(now,.55);}
   else if(s.type==='skin'){this.tone('triangle',660,990,now,.14,.1);}
   else this.air(now,.2,'bandpass',900,5000,.09);
  }
@@ -42,6 +43,12 @@ export class PerfumeAudio implements MirrorAudio<PerfumeSound> {
  private tone(type:OscillatorType,from:number,to:number,at:number,length:number,peak:number){
   const osc=this.ctx!.createOscillator();osc.type=type;osc.frequency.setValueAtTime(from,at);osc.frequency.exponentialRampToValueAtTime(to,at+length);
   osc.connect(this.envelope(at,peak,length));osc.onended=()=>osc.disconnect();osc.start(at);osc.stop(at+length+.02);
+ }
+ private swell(at:number,length:number){
+  const ctx=this.ctx!,source=ctx.createBufferSource(),filter=ctx.createBiquadFilter(),gain=ctx.createGain();
+  source.buffer=this.noise;source.loop=true;filter.type='bandpass';filter.Q.value=1.4;filter.frequency.setValueAtTime(700,at);filter.frequency.exponentialRampToValueAtTime(5200,at+length);
+  gain.gain.setValueAtTime(.0001,at);gain.gain.exponentialRampToValueAtTime(.16,at+length);gain.gain.exponentialRampToValueAtTime(.0001,at+length+.04);gain.connect(this.master!);
+  source.connect(filter).connect(gain);source.onended=()=>source.disconnect();source.start(at);source.stop(at+length+.06);
  }
  private air(at:number,length:number,kind:BiquadFilterType,from:number,to:number,peak:number){
   const ctx=this.ctx!,source=ctx.createBufferSource(),filter=ctx.createBiquadFilter();
