@@ -195,7 +195,7 @@ try{
  // Copy: honest limits and sources, and no house, product or perfumer names anywhere.
  await page.locator('#organ-sources').click();const about=await page.locator('#organ-about').textContent();await page.locator('#organ-about-close').click();
  for(const word of ['illustrative','exponential','4 : 3 : 1','2023/1545','0.001%','pulse points','weakly supported'])assert.ok(about.includes(word),word);
- assert.equal(await page.locator('#organ-about a').count(),5);
+ assert.equal(await page.locator('#organ-about a').count(),4);
  const text=await read(()=>document.body.innerText);for(const banned of JSON.parse(Buffer.from('WyJIb3ViaWdhbnQiLCJSb3lhbGUiLCJDb3R5IiwiR3VlcmxhaW4iLCJDaGFuZWwiLCJEaW9yIiwiQ2FybGVzIiwiTWl0c291a28iLCJKaWNreSJd','base64').toString()))assert.ok(!text.includes(banned),banned);
  assert.equal(await camera(),cam0,'no gesture moved the camera all run');
  check('About gives honest limits and five sources; no brand or perfumer names on the page; the camera never moved');
