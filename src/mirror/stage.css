@@ -2,7 +2,7 @@
 .mirror-workspace{--mirror-ink:#eef3f2;--mirror-dim:rgba(238,243,242,.58);--mirror-accent:#ffc861;--mirror-line:rgba(255,255,255,.1);--mirror-panel:rgba(9,14,20,.82);--line:var(--mirror-line);position:relative;min-height:100svh;background:#05080c;color:var(--mirror-ink);font-family:'DM Sans',system-ui,sans-serif}
 .mirror-workspace-stage{background:radial-gradient(ellipse at 50% 42%,#142231 0%,#0a1119 48%,#05080c 100%)}
 .mirror-workspace .workspace-nav{position:relative;z-index:6;flex:none;width:fit-content;max-width:100%;margin:0 auto;padding:6px 20px;gap:2px;background:rgba(5,8,12,.55);border-bottom:1px solid rgba(255,255,255,.07);backdrop-filter:blur(10px)}
-.mirror-workspace .workspace-nav a,.mirror-workspace .workspace-nav button{font-size:11px;padding:6px 7px;color:var(--mirror-dim);border-radius:4px;background:none;border-color:transparent}
+.mirror-workspace .workspace-nav a,.mirror-workspace .workspace-nav button{font-size:11px;padding:6px 5px;color:var(--mirror-dim);border-radius:4px;background:none;border-color:transparent}
 .mirror-workspace .workspace-nav a:hover,.mirror-workspace .workspace-nav button:hover{background:rgba(255,255,255,.08);color:var(--mirror-ink)}
 .mirror-workspace .workspace-nav [aria-current=page],.mirror-workspace .workspace-nav .active{background:rgba(255,255,255,.12);color:var(--mirror-ink);font-weight:400}
 .mirror-workspace .brand{color:var(--mirror-ink)}
@@ -27,5 +27,5 @@ body:has(.mirror-workspace) .hosted-preview summary{font-size:10px;color:rgba(23
  body:has(.mirror-workspace) .hosted-preview details[open]>div{position:absolute;top:30px;right:0;width:320px;padding:10px 12px;border:1px solid rgba(255,255,255,.1);border-radius:8px;background:rgba(9,14,20,.95)}
 }
 /* Centred like ATP, with clear space either side for the right-hand controls; narrower windows start it at the left instead. */
-@media(min-width:901px){.mirror-workspace .workspace-nav{max-width:calc(100% - 420px)}}
+@media(min-width:901px){.mirror-workspace .workspace-nav{max-width:calc(100% - 400px)}}
 @media(min-width:901px) and (max-width:1180px){.mirror-workspace .workspace-nav{margin-left:0;max-width:calc(100% - 300px)}}
