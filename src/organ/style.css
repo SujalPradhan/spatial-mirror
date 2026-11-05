@@ -1,87 +1,128 @@
 .organ-page{--mirror-accent:#e9c27a;--mirror-accent-rgb:233,194,122;--gold:#f3cf86;--gold-dim:rgba(243,207,134,.62);--ivory:#fbecd0;--serif:ui-serif,serif}
-.organ-page .mirror-stage{background:radial-gradient(ellipse at 50% 58%,#2a1d13 0%,#140e0b 42%,#070606 100%)}
+.organ-page .mirror-stage{background:radial-gradient(ellipse at 50% 64%,#2a1d13 0%,#140e0b 42%,#070606 100%)}
 .organ-page .mirror-mark{font:500 21px/1 var(--serif);letter-spacing:.02em;color:var(--ivory)}
-.organ-page .mirror-mark span{font-style:italic;font-weight:400;color:var(--gold-dim);margin-left:4px}
+.organ-page .mirror-mark span{font-style:italic;font-weight:400;color:var(--gold-dim);margin-left:4px;font-size:15px}
 .organ-page .mirror-count output{font-family:var(--serif);font-weight:500;color:var(--gold)}
+/* The guided chapter is the tutorial: the shared eleven-gesture drill and bar stay out of the way. */
+.organ-page .mirror-gestures,.organ-page .mirror-tutorial,.organ-page #organ-tutorial-replay{display:none!important}
+.organ-page .mirror-about p{white-space:pre-line}
 .organ-hud{position:absolute;inset:0;z-index:3;pointer-events:none;overflow:hidden;font-size:11px;color:var(--ivory)}
 .organ-hud>*{position:absolute;left:0;top:0}
-.organ-hud>.organ-tag,.organ-hud>.organ-family,.organ-hud>.organ-hover,.organ-hud>.organ-dose,.organ-hud>.organ-reticle,.organ-hud>.organ-hold,.organ-hud>.organ-clock,.organ-hud>.organ-slice,.organ-hud>.organ-split,.organ-hud>.organ-forearm,.organ-hud>.organ-conc,.organ-hud>.organ-shock,.organ-hud>.organ-place{visibility:hidden;opacity:0;transition:opacity .18s}
+.organ-hud>.organ-tag,.organ-hud>.organ-hover,.organ-hud>.organ-meter,.organ-hud>.organ-reticle,.organ-hud>.organ-hold,.organ-hud>.organ-pair,.organ-hud>.organ-palm,.organ-hud>.organ-card,.organ-hud>.organ-offer,.organ-hud>.organ-waft{visibility:hidden;opacity:0;transition:opacity .18s}
 .organ-hud>.is-on{visibility:visible;opacity:1}
 .organ-bones{width:100%;height:100%;overflow:visible}
 .organ-bones line{stroke:rgba(243,207,134,.38);stroke-width:1.4;stroke-linecap:round}
-.organ-bones circle{fill:var(--gold)}
-.organ-bones .is-pinch line{stroke:rgba(255,226,160,.8)}
-.organ-tag{translate:-50% 0;text-align:center;white-space:nowrap;text-shadow:0 1px 6px #000}
-.organ-tag b{display:block;font:500 11.5px/1.1 var(--serif);letter-spacing:.03em;color:var(--ivory)}
-.organ-tag small{display:none;font-size:7.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--c);opacity:.75}
-.organ-tag.is-hot small{display:block}
+.organ-bones .is-pinch line{stroke:rgba(255,226,160,.85)}
+.organ-bones .is-fist line{stroke:rgba(255,200,140,.7)}
+/* The one line. */
+.organ-hud>.organ-line{left:50%;top:48px;translate:-50% 0;width:min(840px,calc(100% - 160px));text-align:center;pointer-events:auto}
+.organ-line>b{display:block;font:500 23px/1.22 var(--serif);letter-spacing:.005em;color:#fff6e6;text-shadow:0 2px 18px rgba(0,0,0,.85);animation:organ-in .5s ease-out}
+.organ-line>b.is-locked{color:var(--gold);text-shadow:0 0 22px rgba(243,207,134,.55),0 2px 18px #000}
+.organ-line>small:empty{display:none}
+.organ-line>small{display:block;margin-top:5px;font:italic 14px/1.35 var(--serif);color:rgba(251,236,208,.78);text-shadow:0 1px 10px #000}
+.organ-line ul{display:inline-flex;flex-wrap:wrap;justify-content:center;gap:4px;margin:9px 0 0;padding:0;list-style:none}
+.organ-line li{display:flex;align-items:center;gap:6px;padding:4px 10px 4px 7px;border:1px solid rgba(243,207,134,.22);border-radius:99px;background:rgba(14,10,8,.62);font-size:11px;color:rgba(251,236,208,.82);transition:background .12s,border-color .12s}
+.organ-line li i{font-style:normal;font-size:14px;line-height:1}
+.organ-line li>small{font-size:9px;letter-spacing:.06em;color:var(--gold-dim);padding-left:6px;border-left:1px solid rgba(243,207,134,.2)}
+.organ-line li.is-on{background:rgba(243,207,134,.24);border-color:var(--gold);color:#fff}
+.organ-line li button,.organ-palm button,.organ-chapters button{pointer-events:auto;padding:1px 7px;border:1px solid rgba(243,207,134,.35);border-radius:99px;background:rgba(243,207,134,.08);font-size:9px;letter-spacing:.04em;color:var(--ivory)}
+.organ-line li button:disabled,.organ-palm button:disabled{opacity:.35;cursor:default}
+@keyframes organ-in{from{opacity:0;transform:translateY(-6px)}}
+.organ-hud>.organ-chapters{left:auto;top:auto;right:18px;bottom:54px;display:flex;gap:3px;pointer-events:auto}
+.organ-chapters button{padding:3px 9px;font-size:9.5px;background:rgba(14,10,8,.5);border-color:rgba(243,207,134,.18);color:var(--gold-dim)}
+.organ-chapters button[aria-current]{border-color:var(--gold);color:var(--ivory);background:rgba(243,207,134,.16)}
+/* Vials. */
+.organ-tag{translate:-50% 0;text-align:center;white-space:nowrap;text-shadow:0 1px 6px #000;transition:opacity .25s}
+.organ-tag b{display:block;font:500 15px/1.1 var(--serif);letter-spacing:.02em;color:var(--ivory)}
+.organ-tag small{display:block;margin-top:2px;font:italic 12px/1.2 var(--serif);color:rgba(251,236,208,.7)}
+.organ-tag em{display:inline-block;margin-top:3px;padding:1px 5px;border-radius:3px;background:rgba(255,143,116,.18);font:600 8px/1.3 system-ui,sans-serif;font-style:normal;letter-spacing:.12em;text-transform:uppercase;color:#ffb39d}
+.organ-tag.is-free b{font-size:11px}
+.organ-tag.is-free b:before{content:'';display:inline-block;width:6px;height:6px;margin-right:4px;border-radius:50%;background:var(--c);box-shadow:0 0 6px var(--c);vertical-align:1px}
+.organ-hud>.organ-tag.is-asleep{opacity:.4}
 .organ-tag.is-hot b{color:#fff;text-shadow:0 0 12px var(--gold)}
-.organ-family{translate:-50% -100%}
-.organ-family b{font:italic 400 17px/1 var(--serif);color:var(--c);text-transform:capitalize;text-shadow:0 0 14px rgba(0,0,0,.9)}
-.organ-card{pointer-events:auto;width:236px;padding:12px 14px 10px;border:1px solid rgba(243,207,134,.24);border-radius:10px;background:linear-gradient(180deg,rgba(22,16,12,.84),rgba(10,8,7,.8));backdrop-filter:blur(10px);box-shadow:0 18px 50px rgba(0,0,0,.45)}
-.organ-card header{display:flex;flex-direction:column;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid rgba(243,207,134,.16)}
-.organ-card header b{font:italic 500 19px/1.1 var(--serif);color:var(--ivory)}
-.organ-card header small{font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--gold-dim)}
-.organ-hud>.organ-formula{left:18px;top:84px;max-height:calc(100% - 210px);overflow:auto}
-.organ-hud>.organ-label{left:auto;right:18px;top:84px;width:250px;max-height:calc(100% - 210px);overflow:auto}
-.organ-card table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
-.organ-card th{font-weight:400;font-size:8.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--gold-dim);text-align:right;padding-bottom:3px}
-.organ-card th:first-child{text-align:left}
-.organ-card td{padding:2px 0;font-size:11px;text-align:right;color:rgba(251,236,208,.82)}
-.organ-card td:first-child{text-align:left;font:500 13px/1.2 var(--serif);color:var(--ivory)}
-.organ-card td:nth-child(2){font-size:8px;letter-spacing:.1em;color:var(--gold-dim);padding-right:4px}
-.organ-card td i,.organ-hover small i,.organ-slice li i{display:inline-block;width:7px;height:7px;margin-right:6px;border-radius:50%;background:var(--c);box-shadow:0 0 7px var(--c);vertical-align:1px}
-.organ-card tr.is-changed td:first-child{color:#ffd59a}
-.organ-total{margin:6px 0 0;font-size:9.5px;letter-spacing:.08em;color:var(--gold-dim)}
-.organ-empty{margin:4px 0 6px;font:italic 13px/1.4 var(--serif);color:rgba(251,236,208,.6)}
-.organ-card nav{display:flex;flex-wrap:wrap;gap:4px;margin-top:9px}
-.organ-card button{white-space:nowrap;padding:4px 8px;border:1px solid rgba(243,207,134,.3);border-radius:99px;background:rgba(243,207,134,.06);font-size:9.5px;letter-spacing:.04em;color:var(--ivory)}
-.organ-card button:hover:not(:disabled){background:rgba(243,207,134,.2)}
-.organ-card button:disabled{opacity:.35;cursor:default}
-.organ-comply{margin-top:8px;padding:8px 9px;border-left:2px solid var(--gold);border-radius:0 6px 6px 0;background:rgba(243,207,134,.07)}
-.organ-comply b{font:italic 500 14px/1.2 var(--serif);color:var(--gold)}
-.organ-comply ul{margin:4px 0;padding:0;list-style:none}
-.organ-comply li{font-size:10.5px;line-height:1.35;color:var(--ivory)}
-.organ-comply li em{font-style:normal;color:#ffd59a}
-.organ-comply li small{display:block;font-size:8.5px;letter-spacing:.08em;color:var(--gold-dim)}
-.organ-comply p{margin:4px 0 0;font-size:10px;color:var(--gold-dim)}
-.organ-comply strong{font:500 15px/1 var(--serif);color:var(--ivory)}
-.organ-contains{margin:0 0 3px;font:italic 500 14px/1 var(--serif);color:var(--gold)}
+.organ-palm{translate:-50% 0;text-align:center;white-space:nowrap;pointer-events:auto}
+.organ-palm b{font:italic 500 14px/1 var(--serif);color:var(--ivory)}
+.organ-palm small{margin:0 7px;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--gold-dim)}
+.organ-meter{translate:-50% -50%;width:132px;padding:6px 9px 5px;border:1px solid rgba(243,207,134,.35);border-radius:9px;background:rgba(14,10,8,.82);text-align:center}
+.organ-meter b{display:block;font:500 13px/1.1 var(--serif)}
+.organ-meter b span{font:600 11px/1 system-ui,sans-serif;color:var(--gold);font-variant-numeric:tabular-nums}
+.organ-meter svg{display:block;width:80px;height:44px;margin:2px auto 0;overflow:visible}
+.organ-meter .track{fill:none;stroke:rgba(243,207,134,.2);stroke-width:5;stroke-linecap:round}
+.organ-meter .dead{fill:none;stroke:rgba(251,236,208,.35);stroke-width:5}
+.organ-meter line{stroke:var(--ivory);stroke-width:2.2;stroke-linecap:round}
+.organ-meter small{display:block;font-size:9px;color:var(--gold-dim)}
+.organ-meter.is-pouring{border-color:var(--gold);box-shadow:0 0 18px rgba(243,207,134,.35)}
+.organ-meter.is-pouring line{stroke:var(--gold)}
+.organ-meter.is-loose{border-style:dashed}
+.organ-pair{translate:-50% -100%;width:230px;padding:7px 10px;border-radius:9px;background:rgba(14,10,8,.84);border:1px solid rgba(243,207,134,.3)}
+.organ-pair span{display:flex;justify-content:space-between;font:500 12px/1 var(--serif)}
+.organ-pair div{position:relative;height:8px;margin:5px 0 4px;border-radius:4px;background:var(--b);box-shadow:inset 0 0 0 1px rgba(0,0,0,.3)}
+.organ-pair div s{position:absolute;left:0;top:0;bottom:0;border-radius:4px 0 0 4px;background:var(--a);text-decoration:none;transition:width .1s}
+.organ-pair div i{position:absolute;top:-4px;bottom:-4px;width:2px;margin-left:-1px;background:#fff6e6;box-shadow:0 0 6px #fff}
+.organ-pair small{display:block;text-align:center;font-size:9.5px;color:var(--gold-dim);font-variant-numeric:tabular-nums}
+/* The ribbon: your day. */
+.organ-hud>.organ-ribbon{top:auto;left:50%;translate:-50% 0;pointer-events:auto;cursor:default}
+.organ-ribbon.is-live{cursor:ew-resize}
+.organ-ribbon-head{position:absolute;left:0;right:0;top:-20px;display:flex;align-items:baseline;gap:8px}
+.organ-ribbon-head>b{font:italic 500 14px/1 var(--serif)}
+.organ-ribbon-head>small{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--gold-dim)}
+.organ-ribbon-head em{margin-left:auto;font:italic 12px/1 var(--serif);color:rgba(251,236,208,.75)}
+.organ-ribbon-head strong{margin-left:auto;font:500 16px/1 var(--serif);color:var(--ivory);font-variant-numeric:tabular-nums}
+.organ-ribbon-head strong small{font:400 9px/1 system-ui,sans-serif;letter-spacing:.08em;color:var(--gold-dim)}
+.organ-ribbon-head strong.is-locked{color:var(--gold)}
+.organ-ribbon-plot{position:absolute;inset:0;border-radius:6px;background:rgba(10,8,7,.55);box-shadow:inset 0 0 0 1px rgba(243,207,134,.14);overflow:hidden}
+.organ-ribbon-plot svg{display:block;width:100%;height:100%}
+.organ-ribbon-plot .ghost{fill:rgba(243,207,134,.07)}
+.organ-ribbon-plot .ghost-line{fill:none;stroke:rgba(251,236,208,.75);stroke-width:1.6;stroke-dasharray:5 5;vector-effect:non-scaling-stroke}
+.organ-ribbon-plot .band{fill:var(--c);opacity:.86;stroke:rgba(0,0,0,.25);stroke-width:.6;vector-effect:non-scaling-stroke}
+.organ-ribbon-plot em{position:absolute;bottom:7px;translate:-50% 0;font:italic 12px/1 var(--serif);color:#fff6e6;text-shadow:0 1px 6px #000;animation:organ-in .6s ease-out both}
+.organ-ribbon-plot em:first-of-type{translate:0 0}
+.organ-ribbon-plot em:nth-of-type(2){animation-delay:.8s}
+.organ-ribbon-plot em:nth-of-type(3){animation-delay:1.5s}
+.organ-ribbon.is-locked .organ-ribbon-plot{animation:organ-lock 1.6s ease-out}
+@keyframes organ-lock{0%{box-shadow:inset 0 0 0 1px var(--gold),0 0 0 rgba(243,207,134,0)}30%{box-shadow:inset 0 0 0 2px var(--gold),0 0 40px rgba(243,207,134,.7)}100%{box-shadow:inset 0 0 0 1px rgba(243,207,134,.14)}}
+.organ-hours{position:absolute;left:0;right:0;bottom:-15px;height:12px}
+.organ-hours i{position:absolute;translate:-50% 0;font-style:normal;font-size:8.5px;color:var(--gold-dim);font-variant-numeric:tabular-nums}
+.organ-cursor{position:absolute;top:0;bottom:0;width:2px;margin-left:-1px;background:var(--ivory);box-shadow:0 0 8px var(--gold);opacity:0;transition:opacity .2s}
+.organ-cursor.is-on{opacity:1}
+.organ-cursor span{position:absolute;top:5px;left:0;translate:var(--shift,-50%) 0;white-space:nowrap;padding:3px 8px;border-radius:99px;background:rgba(14,10,8,.85);border:1px solid rgba(243,207,134,.3);font:italic 12px/1.2 var(--serif);color:var(--ivory)}
+.organ-cursor span b{font:600 11px/1 system-ui,sans-serif;font-style:normal;color:var(--gold);font-variant-numeric:tabular-nums}
+.organ-cursor.is-scrub span{border-color:var(--gold)}
+/* Cards. */
+.organ-card{pointer-events:auto;width:228px;padding:11px 13px 9px;border:1px solid rgba(243,207,134,.24);border-radius:10px;background:linear-gradient(180deg,rgba(22,16,12,.86),rgba(10,8,7,.82));backdrop-filter:blur(10px);box-shadow:0 18px 50px rgba(0,0,0,.45)}
+.organ-card header{display:flex;flex-direction:column;margin-bottom:6px;padding-bottom:5px;border-bottom:1px solid rgba(243,207,134,.16)}
+.organ-card header b{font:italic 500 18px/1.1 var(--serif)}
+.organ-card header small{font-size:8.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--gold-dim)}
 .organ-label ul{margin:0;padding:0;list-style:none}
-.organ-label li b{font:inherit;color:inherit}
-.organ-label li small:empty{display:none}
-.organ-label li{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 5px;padding:2.5px 0;font:500 13px/1.2 var(--serif);color:var(--ivory);opacity:var(--o,1);animation:organ-write .5s ease-out;transition:opacity .3s}
-.organ-label li em{font:600 7.5px/1 system-ui,sans-serif;font-style:normal;letter-spacing:.12em;padding:2px 4px;border-radius:3px;background:rgba(243,207,134,.18);color:var(--gold)}
-.organ-label li span{margin-left:auto;font:400 9.5px/1 system-ui,sans-serif;color:var(--gold-dim);font-variant-numeric:tabular-nums}
-.organ-label li small{flex-basis:100%;font:600 8.5px/1.4 system-ui,sans-serif;letter-spacing:.08em;text-transform:uppercase;color:#ff8f74}
-.organ-label li.is-flagged{color:#ffb39d}
-.organ-label li.is-gone{text-decoration:line-through;text-decoration-color:rgba(243,207,134,.4)}
+.organ-label li{padding:2px 0;font:12.5px/1.25 var(--serif);color:rgba(251,236,208,.85);animation:organ-write .5s ease-out}
+.organ-label li b{font-weight:600;color:var(--ivory)}
+.organ-label li small{display:block;font:9px/1.4 system-ui,sans-serif;color:var(--gold-dim)}
+.organ-label li em{font:600 8px/1 system-ui,sans-serif;font-style:normal;letter-spacing:.1em;text-transform:uppercase;padding:2px 4px;border-radius:3px;background:rgba(255,143,116,.2);color:#ffb39d}
+.organ-label li.is-flagged b{color:#ffb39d}
+.organ-label footer{margin-top:6px;padding-top:5px;border-top:1px solid rgba(243,207,134,.16);font-size:9px;line-height:1.45;color:var(--gold-dim)}
 @keyframes organ-write{from{opacity:0;transform:translateX(-8px);text-shadow:0 0 14px var(--gold)}}
-.organ-under{margin:7px 0 0;font-size:9px;line-height:1.4;color:rgba(251,236,208,.45)}
-.organ-label footer{margin-top:8px;padding-top:6px;border-top:1px solid rgba(243,207,134,.16);font-size:9px;line-height:1.5;color:var(--gold-dim)}
-.organ-label footer strong{display:block;font-weight:600;color:#ffb39d}
-.organ-hover{width:230px;padding:10px 12px;border:1px solid rgba(243,207,134,.35);border-radius:9px;background:rgba(14,10,8,.88);backdrop-filter:blur(10px);box-shadow:0 12px 40px rgba(0,0,0,.5)}
-.organ-hover b{display:block;font:500 20px/1.05 var(--serif);color:#fff6e6}
-.organ-hover>small{display:block;margin:2px 0 5px;font-size:8.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--gold-dim)}
-.organ-hover p{margin:0 0 6px;font:italic 13px/1.3 var(--serif);color:var(--ivory)}
-.organ-hover p.is-none{font-style:normal;font-size:10px;color:var(--gold-dim)}
-.organ-hover dl{display:grid;grid-template-columns:auto 1fr;gap:3px 8px;margin:0 0 6px;font-size:9.5px;align-items:center}
-.organ-hover dt{color:var(--gold-dim)}
-.organ-hover dd{margin:0;text-align:right;font-variant-numeric:tabular-nums}
-.organ-hover dd s{display:block;height:3px;border-radius:3px;background:linear-gradient(90deg,var(--gold),#fff6e6);text-decoration:none;margin-left:auto}
-.organ-hover ul{margin:0;padding:5px 0 0;list-style:none;border-top:1px solid rgba(243,207,134,.15)}
-.organ-hover li{display:flex;justify-content:space-between;font-size:10.5px;line-height:1.5}
-.organ-hover li span{color:var(--gold-dim);font-variant-numeric:tabular-nums}
-.organ-hover li em,.organ-slice em{font:600 7.5px/1 system-ui,sans-serif;font-style:normal;letter-spacing:.1em;color:var(--gold)}
-.organ-dose{padding:7px 10px;border-radius:8px;background:rgba(14,10,8,.82);border:1px solid rgba(243,207,134,.35);white-space:nowrap}
-.organ-dose b{display:block;font:500 15px/1.1 var(--serif)}
-.organ-dose span{display:flex;gap:3px;margin:5px 0 4px}
-.organ-dose span i{width:9px;height:13px;border-radius:50% 50% 50% 50%/60% 60% 40% 40%;border:1px solid rgba(243,207,134,.45)}
-.organ-dose span i.is-on{background:var(--c);border-color:var(--c);box-shadow:0 0 8px var(--c)}
-.organ-dose small{font-size:9.5px;color:var(--gold-dim)}
-.organ-dose.is-loose{border-style:dashed}
+.organ-swap p{margin:2px 0 6px;font:13px/1.4 var(--serif)}
+.organ-swap em{font-style:normal;color:#ffd59a}
+.organ-swap dl{display:grid;grid-template-columns:1fr auto;gap:2px 8px;margin:0;font-size:10px}
+.organ-swap dt{color:var(--gold-dim)}
+.organ-swap dd{margin:0;font:500 15px/1 var(--serif);text-align:right;font-variant-numeric:tabular-nums}
+.organ-hud>.organ-offer{pointer-events:auto;display:grid;place-items:center;padding:0 22px;border:1px solid var(--gold);border-radius:99px;background:linear-gradient(180deg,rgba(243,207,134,.26),rgba(243,207,134,.1));font:italic 500 19px/1 var(--serif);color:#fff6e6;box-shadow:0 0 30px rgba(243,207,134,.25);transition:opacity .3s,background .15s,box-shadow .15s}
+.organ-hud>.organ-offer.is-hot,.organ-offer:hover{background:rgba(243,207,134,.4);box-shadow:0 0 44px rgba(243,207,134,.55)}
+.organ-hover{width:190px;padding:8px 11px;border:1px solid rgba(243,207,134,.35);border-radius:9px;background:rgba(14,10,8,.88);backdrop-filter:blur(10px)}
+.organ-hover b{display:block;font:500 18px/1.05 var(--serif);color:#fff6e6}
+.organ-hover p{margin:3px 0 2px;font:italic 14px/1.25 var(--serif)}
+.organ-hover small{display:block;font-size:9.5px;color:var(--gold-dim)}
+.organ-hover small.is-chem{margin-top:4px;padding-top:4px;border-top:1px solid rgba(243,207,134,.15)}
+.organ-waft{translate:-50% -50%;display:flex;flex-direction:column;align-items:center;opacity:calc(.3 + var(--k,0) * .7)!important}
+.organ-waft i{font-style:normal;font-size:22px;transform:translateY(calc(var(--k,0) * -10px))}
+.organ-waft span{font:italic 12px/1 var(--serif);color:var(--gold)}
+/* Waft words rise off the palm. */
+.organ-puff{position:absolute;left:0;top:0;display:flex;gap:10px;translate:-50% 0;white-space:nowrap}
+.organ-puff span{font:italic 500 24px/1 var(--serif);color:#fff6e6;text-shadow:0 0 18px rgba(243,207,134,.8),0 2px 10px #000;animation:organ-rise 2.6s ease-out both;animation-delay:calc(var(--i) * .14s)}
+.organ-puff.is-miss span{color:#ffd2c4;font-size:16px}
+@keyframes organ-rise{0%{opacity:0;transform:translateY(10px) scale(.8)}15%{opacity:1}100%{opacity:0;transform:translateY(-130px) scale(1.12)}}
 .organ-reticle{width:2px;height:2px}
-.organ-reticle:before{content:'';position:absolute;left:-22px;top:-22px;width:44px;height:44px;border:1.5px solid rgba(243,207,134,.7);border-radius:50%;transform:scale(var(--k,1));transition:transform .08s}
+.organ-reticle:before{content:'';position:absolute;left:-26px;top:-26px;width:52px;height:52px;border:1.5px solid rgba(243,207,134,.7);border-radius:50%;transform:scale(var(--k,1));transition:transform .08s}
 .organ-reticle:after{content:'';position:absolute;left:-2px;top:-2px;width:4px;height:4px;border-radius:50%;background:var(--gold)}
 .organ-reticle.has-target:before{border-color:#fff6e6;box-shadow:0 0 16px rgba(243,207,134,.8)}
 .organ-hold{width:64px;height:64px;translate:-50% -50%;display:grid;place-items:center}
@@ -94,39 +135,5 @@
 .organ-ack{position:absolute;left:0;top:0;translate:-50% 0;padding:5px 10px;border-radius:99px;background:rgba(14,10,8,.85);border:1px solid rgba(243,207,134,.4);font-size:11px;white-space:nowrap;animation:organ-pop .16s ease-out}
 .organ-ack.is-miss{border-color:rgba(255,143,116,.55);color:#ffd2c4}
 @keyframes organ-pop{from{scale:.86}}
-.organ-clock{width:340px;translate:-50% 0;text-align:center;padding:8px 14px 6px;border-radius:10px;background:rgba(10,8,7,.6);backdrop-filter:blur(8px)}
-.organ-clock b{font:500 24px/1 var(--serif);color:var(--ivory)}
-.organ-clock span{position:relative;display:block;height:3px;margin:8px 0 14px;border-radius:3px;background:rgba(243,207,134,.18)}
-.organ-clock span s{position:absolute;left:0;top:0;bottom:0;border-radius:3px;background:var(--gold);text-decoration:none;box-shadow:0 0 10px var(--gold)}
-.organ-clock span i{position:absolute;top:7px;translate:-50% 0;font-style:normal;font-size:8.5px;color:var(--gold-dim)}
-.organ-clock small{font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--gold-dim)}
-.organ-slice{width:220px;padding:10px 12px;border-left:2px solid var(--gold);border-radius:0 9px 9px 0;background:rgba(14,10,8,.85)}
-.organ-slice b{display:block;font:italic 500 19px/1 var(--serif)}
-.organ-slice>small{font-size:8.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--gold-dim)}
-.organ-slice ul{margin:6px 0 0;padding:0;list-style:none}
-.organ-slice li{display:grid;grid-template-columns:auto 1fr 30px;align-items:center;gap:0 4px;font:500 12.5px/1.45 var(--serif)}
-.organ-slice li s{grid-column:1/3;grid-row:2;height:2px;width:0;background:var(--c);text-decoration:none;border-radius:2px}
-.organ-slice li span{grid-row:1/3;grid-column:3;text-align:right;font:400 10px/1 system-ui,sans-serif;color:var(--gold-dim)}
-.organ-split{translate:-100% -50%;text-align:right;white-space:nowrap}
-.organ-split b{display:block;font:italic 500 16px/1 var(--serif);text-transform:capitalize;color:var(--ivory)}
-.organ-split small{font-size:9.5px;color:var(--gold-dim)}
-.organ-forearm{width:300px;padding:9px 12px;border:1px solid rgba(243,207,134,.24);border-radius:9px;background:rgba(14,10,8,.82)}
-.organ-forearm>b{font:italic 500 16px/1 var(--serif)}
-.organ-forearm>small{display:block;font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--gold-dim);margin:2px 0 4px}
-.organ-forearm p{display:grid;grid-template-columns:16px 1fr 40px;grid-template-rows:auto 2px;align-items:center;margin:2px 0;font-size:10.5px}
-.organ-forearm p i{grid-row:1/3;font:italic 600 15px/1 var(--serif);font-style:normal;color:var(--gold)}
-.organ-forearm p s{grid-column:2/3;grid-row:2;height:2px;background:var(--gold);text-decoration:none}
-.organ-forearm p em{grid-row:1/3;grid-column:3;text-align:right;font-style:normal;color:var(--gold-dim)}
-.organ-forearm .organ-fix{color:#ffd59a;text-transform:none;letter-spacing:.02em;font-size:10px}
-.organ-conc{width:260px;translate:-50% 0;text-align:center;padding:10px 14px;border-radius:10px;background:rgba(14,10,8,.82);border:1px solid rgba(243,207,134,.3)}
-.organ-conc b{font:500 22px/1 var(--serif)}
-.organ-conc span{display:block;height:3px;margin:8px 0 6px;background:rgba(243,207,134,.18);border-radius:3px}
-.organ-conc span s{display:block;height:100%;background:var(--gold);text-decoration:none;border-radius:3px}
-.organ-conc small{font-size:9.5px;color:var(--gold-dim)}
-.organ-shock{width:2px;height:2px}
-.organ-shock:before{content:'';position:absolute;left:-60px;top:-60px;width:120px;height:120px;border:2px solid var(--gold);border-radius:50%;transform:scale(calc(.4 + var(--a,0) * 2.2));opacity:calc(1 - var(--a,0) / 1.4)}
-.organ-place{translate:-50% 0;text-align:center;white-space:nowrap}
-.organ-place b{display:block;font:italic 500 15px/1 var(--serif);color:var(--ivory)}
-.organ-place small{font-size:8.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--gold-dim)}
-@media(max-width:900px){.organ-card{width:190px}.organ-label{width:200px}.organ-formula,.organ-label{max-height:38%}}
-@media(prefers-reduced-motion:reduce){.organ-label li{animation:none}.organ-ack{animation:none}}
+@media(max-width:1000px){.organ-hud>.organ-line{width:calc(100% - 40px);top:84px}.organ-line>b{font-size:19px}.organ-card{width:200px}}
+@media(prefers-reduced-motion:reduce){.organ-label li,.organ-ack,.organ-line>b{animation:none}.organ-puff span{animation-duration:.01s;animation-fill-mode:none;opacity:1}}

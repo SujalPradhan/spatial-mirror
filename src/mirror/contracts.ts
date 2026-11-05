@@ -24,7 +24,11 @@ export interface TrackedHand {
  velocity:{x:number;y:number};
  /** Frames since this pose was confirmed; 0 on the frame it became stable. */
  poseAge:number;
+ /** Raw, unsmoothed joint geometry for an object that reads the hand's shape. Only present when the object asks for it with handShape. */
+ shape?:HandShape;
 }
+/** The 21 landmarks as the tracker gave them, x mirrored. metric: metres about the hand (camera); otherwise image units with y scaled to x (phone). */
+export interface HandShape {points:MirrorPoint[];metric:boolean}
 export type GestureEvent={type:'clap';x:number;y:number}|{type:'pose';handId:number;pose:HandPose}|{type:'lost';handId:number};
 export interface GestureFrame {at:number;hands:TrackedHand[];events:GestureEvent[]}
 
@@ -130,4 +134,6 @@ export interface MirrorObject<State extends MirrorState=MirrorState,View extends
  idles?(state:State):boolean;
  /** Called when the viewer recenters, for an object with more to put back than the pose. */
  recentered?(engine:Engine):void;
+ /** Ask the tracker to carry each hand's raw landmarks (TrackedHand.shape), for an object driven by the hand's whole shape. */
+ handShape?:boolean;
 }

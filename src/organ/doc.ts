@@ -1,32 +1,30 @@
-import {clampConc,type Blend,type Compliance,type Product,type Skin} from './model';
+import type {Items} from './accord';
+import type {Compliance} from './model';
 /** Everything a hand can change, and so everything 👎 can take back. */
-export type Mode='compose'|'drydown'|'layering';
 export interface OrganDoc {
- blend:Blend;skin:Skin;product:Product;
- /** Families fanned apart on the organ. */
- fan:boolean;mode:Mode;
- /** Finished blends bottled for the forearm, oldest first, at most three. */
- stack:Blend[];
- /** The last compliance pass, while it still describes the flask. */
- compliance:Compliance|null;
+ /** Drops on the palm by material; fractional while pouring. */
+ items:Items;
+ /** Rubbed palms: warm skin lifts everything sooner. */
+ warm:boolean;
+ /** The oakmoss swap, once made. */
+ swap:Compliance|null;
 }
-export const emptyDoc=():OrganDoc=>({blend:{items:[],conc:.15},skin:'normal',product:'leave-on',fan:false,mode:'compose',stack:[],compliance:null});
-export const STACK_MAX=3;
-export const layerName=(i:number)=>'ABC'[i]??String(i+1);
+export const emptyDoc=():OrganDoc=>({items:{},warm:false,swap:null});
 const copy=(d:OrganDoc):OrganDoc=>structuredClone(d);
-/** Snapshots before each change. Undo restores the newest and says what it took back. */
+/** Each entry undoes one change. Pours subtract, so two vials poured at once undo independently. */
+interface Entry {what:string;undo(d:OrganDoc):void}
 export class History {
- private past:{doc:OrganDoc;what:string}[]=[];
- constructor(private limit=60){}
+ private past:Entry[]=[];
+ constructor(private limit=80){}
  get size(){return this.past.length;}
  get last(){return this.past[this.past.length-1]?.what??null;}
- push(before:OrganDoc,what:string){this.past.push({doc:copy(before),what});if(this.past.length>this.limit)this.past.shift();}
- undo():{doc:OrganDoc;what:string}|null{return this.past.pop()??null;}
+ push(what:string,undo:(d:OrganDoc)=>void){this.past.push({what,undo});if(this.past.length>this.limit)this.past.shift();}
+ /** A whole-document snapshot, for changes that are not a simple pour. */
+ snapshot(what:string,before:OrganDoc){const saved=copy(before);this.push(what,d=>{Object.assign(d,copy(saved));});}
+ undo(doc:OrganDoc):{doc:OrganDoc;what:string}|null{const e=this.past.pop();if(!e)return null;const next=copy(doc);e.undo(next);clean(next);return {doc:next,what:e.what};}
  clear(){this.past=[];}
 }
-/** Applies one change, recording the state before it; the change sees a private copy. */
-export function apply(doc:OrganDoc,history:History,what:string,change:(d:OrganDoc)=>void):OrganDoc{
- const next=copy(doc);change(next);next.blend.conc=clampConc(next.blend.conc);
- if(JSON.stringify(next)===JSON.stringify(doc))return doc;
- history.push(doc,what);return next;
-}
+/** Drops that rounding left behind are not on the palm. */
+export function clean(d:OrganDoc){for(const id of Object.keys(d.items))if(!(d.items[id]>1e-3))delete d.items[id];return d;}
+/** A pour session: add drops now, and one undo takes the whole session back. */
+export function pourUndo(id:string,drops:number){return (d:OrganDoc)=>{d.items[id]=(d.items[id]??0)-drops;};}

@@ -30,7 +30,7 @@ let state:MirrorState=object.state.initial(),client:ControlClient|null=null,owns
 let drag:{id:number;x:number;y:number;view:MirrorState['view'];pluck:boolean}|null=null,lastFine=-Infinity,lastPublish=0,lastDescriptor='',spoken='';
 let owner:MirrorInputSource|null=null,before:MirrorState|null=null,history:MirrorState[]=[];
 const empty=():GestureFrame=>({at:0,hands:[],events:[]});
-const viewport=part('viewport'),view=object.createView(viewport),engine=object.createEngine(view),audio=object.createAudio(),tracker=new GestureTracker();
+const viewport=part('viewport'),view=object.createView(viewport),engine=object.createEngine(view),audio=object.createAudio(),tracker=new GestureTracker({shape:!!object.handShape});
 let frame=empty(),lastHands=-Infinity,shockAt=-Infinity;
 // Pose and clap events last one tracker update; one not yet drawn is carried into the next, so a fast camera cannot drop a 🤟 or a clap.
 let drawn=true;

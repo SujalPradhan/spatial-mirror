@@ -70,7 +70,7 @@ export const ingredients:Ingredient[]=[
  // Stand-ins: generic accords with most of the flagged material taken out.
  I('clove-accord','Clove accord','spicy','#b8603a',1.6,1.1,['warm','softened spice'],{eugenol:.06,caryophyllene:.08},{hidden:true}),
  I('cinnamon-accord','Cinnamon accord','spicy','#c9773e',2,1.1,['sweet spice','rounded'],{cinnamal:.005,eugenol:.01},{hidden:true}),
- I('moss-accord','Moss accord','woody','#7d9466',13,.9,['damp','green-woody','lighter'],{oakmoss:.01},{hidden:true}),
+ I('moss-accord','Moss stand-in','woody','#7d9466',8,.75,['damp','green-woody','lighter'],{oakmoss:.01},{hidden:true}),
  I('tonka-accord','Tonka accord','amber','#c79562',14,.85,['almond','softer hay'],{coumarin:.08},{hidden:true}),
 ];
 export const ingredientById=new Map(ingredients.map(i=>[i.id,i]));

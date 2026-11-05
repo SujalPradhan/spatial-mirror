@@ -1,8 +1,8 @@
 import type {MirrorAudio} from '../mirror/contracts';
 import type {OrganSound} from './contracts';
 
-const gaps:Record<OrganSound['type'],number>={pick:.05,drop:.05,return:.1,spray:.3,undo:.2,skin:.2,fan:.3,shock:.4,slice:.2,bottle:.3,miss:.25,tick:.03,split:.2};
-/** Glass and air: vials clink, drops fall in pitch as the flask fills, a spray is a breath of noise. */
+const gaps:Record<OrganSound['type'],number>={pick:.05,drop:.05,return:.1,puff:.3,undo:.2,skin:.3,chord:.8,miss:.25,tick:.03,swap:.4,page:.3};
+/** Glass and air: vials clink, each drop ticks, a waft is a breath of noise, and a locked accord rings a chord. */
 export class OrganAudio implements MirrorAudio<OrganSound> {
  private ctx:AudioContext|null=null;private master:GainNode|null=null;private noise:AudioBuffer|null=null;private last=new Map<string,number>();private muted=false;
  async start(){if(!this.ctx&&!this.build())return;if(this.ctx?.state==='suspended')await this.ctx.resume().catch(()=>{});}
@@ -16,14 +16,13 @@ export class OrganAudio implements MirrorAudio<OrganSound> {
    case 'tick':this.tone('sine',1800,1700,now,.04,.03);break;
    case 'drop':for(let i=0;i<3;i++)this.tone('sine',900-i*140,420-i*60,now+i*.07,.09,.08);break;
    case 'return':this.tone('sine',1600,1590,now,.2,.04);break;
-   case 'spray':this.air(now,.55,'highpass',3600,5600,.12);break;
+   case 'puff':this.air(now,.5,'bandpass',500,2400,.09);break;
    case 'undo':this.tone('triangle',520,300,now,.18,.08);break;
-   case 'skin':this.tone('sine',660,990,now,.2,.07);break;
-   case 'fan':this.air(now,.4,'bandpass',600,2600,.08);break;
-   case 'shock':this.tone('sine',110,50,now,.5,.2);this.tone('sine',1320,1310,now+.05,.8,.04);this.tone('sine',1980,1975,now+.1,.7,.03);break;
-   case 'slice':this.air(now,.18,'highpass',5000,2000,.07);break;
-   case 'bottle':this.tone('sine',1400,1380,now,.3,.06);this.tone('sine',700,690,now+.06,.3,.06);break;
-   case 'split':this.air(now,.25,'bandpass',800,3000,.06);break;
+   case 'skin':this.air(now,.6,'lowpass',900,400,.07);this.tone('sine',330,360,now,.5,.03);break;
+   // A major chord in glass: root, third, fifth and the octave, each a little later.
+   case 'chord':[523.25,659.25,783.99,1046.5].forEach((f,i)=>{this.tone('sine',f,f*.998,now+i*.06,1.6,.05);this.tone('sine',f*2,f*2,now+i*.06,.6,.012);});break;
+   case 'swap':this.tone('sine',880,660,now,.25,.05);this.tone('sine',660,880,now+.12,.25,.05);break;
+   case 'page':this.tone('sine',1200,1500,now,.15,.04);break;
    case 'miss':this.tone('triangle',220,180,now,.14,.07);break;
   }
  }

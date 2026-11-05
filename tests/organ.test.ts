@@ -1,12 +1,13 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import type {GestureEvent,GestureFrame,HandPose,MirrorPoint,TrackedHand} from '../src/mirror/contracts';
-import {apply,emptyDoc,History} from '../src/organ/doc';
-import {GRACE,HOLD,MAGNET,OrganEngine} from '../src/organ/engine';
+import type {GestureFrame,HandPose,MirrorPoint,TrackedHand} from '../src/mirror/contracts';
+import {CHYPRE,DAY,FOUGERE,LOCK,MAX_RATE,TILT_DEAD,TILT_FULL,balance,diagnose,handRoll,matchScore,pourRate,ribbon,smellAt,total} from '../src/organ/accord';
+import {GRACE,UNDO_HOLD,OrganEngine} from '../src/organ/engine';
 import {allergens,ingredients,noteClass,organ} from '../src/organ/ingredients';
-import {place,vialCount,vialIndex} from '../src/organ/layout';
+import {inZone,palmAt,slots} from '../src/organ/layout';
 import {THRESHOLD,composition,declared,dropCount,evaporationOrder,label,layering,layers,makeCompliant,mixColor,remaining,shares,stackLabel,type Blend} from '../src/organ/model';
 import {initialOrgan,organDescriptor,validateOrgan} from '../src/organ/state';
+import {Story,type Facts} from '../src/organ/story';
 
 const blend=(items:[string,number][],conc=.15):Blend=>({items:items.map(([id,drops])=>({id,drops})),conc});
 const near=(a:number,b:number,e=1e-9)=>Math.abs(a-b)<e;
@@ -68,68 +69,134 @@ test('layering adds the layers on skin, and a base-heavy stack fixes lighter not
  const sum=stackLabel([light,light],0,'normal').find(l=>l.id==='limonene')!,one=label(light).find(l=>l.id==='limonene')!;
  assert.ok(near(sum.product,one.product*2,1e-9),'the stack label is the sum');
 });
-test('undo: every change is recorded, a no-op is not, and undo restores the exact state',()=>{
- const h=new History();let d=emptyDoc();
- d=apply(d,h,'rose',x=>{x.blend.items.push({id:'rose',drops:3});});
- d=apply(d,h,'fan',x=>{x.fan=true;});
- const same=apply(d,h,'nothing',x=>{x.fan=true;});assert.equal(same,d);assert.equal(h.size,2);
- const back=h.undo()!;assert.equal(back.what,'fan');assert.equal(back.doc.fan,false);assert.equal(back.doc.blend.items.length,1);
- assert.equal(h.undo()!.doc.blend.items.length,0);assert.equal(h.undo(),null);
+
+// ---- The Accord.
+test('pour rate follows wrist tilt: nothing while level, continuous, either way, full past the top of the range',()=>{
+ assert.equal(pourRate(0),0);assert.equal(pourRate(TILT_DEAD*.9),0,'a slight wobble pours nothing');assert.equal(pourRate(NaN),0);
+ let last=0;for(let a=TILT_DEAD;a<=TILT_FULL;a+=.02){const r=pourRate(a);assert.ok(r>=last,`monotone at ${a}`);assert.ok(r-last<.35,`continuous at ${a}`);last=r;}
+ assert.ok(near(pourRate(TILT_FULL),MAX_RATE)&&near(pourRate(1.4),MAX_RATE));assert.ok(near(pourRate(-.6),pourRate(.6)),'tips either way');
+ assert.ok(pourRate(.4)<pourRate(.8)/2,'a slight tilt is a trickle');
 });
-test('layout: every vial sits on the arc in both arrangements, and the ring wraps rather than losing vials',()=>{
- for(const fan of [0,1])for(let i=0;i<vialCount;i++){const p=place(i,0,fan);assert.ok(p.shown>.99,`${i} shown`);assert.ok(p.z<2,'behind the flask');}
- const shown=(ring:number)=>Array.from({length:vialCount},(_,i)=>place(i,ring,0).shown).filter(x=>x>.5).length;
- assert.ok(shown(1.1)>=vialCount-4,'turning hides at most a few at the ends');assert.equal(vialIndex('rose'),organ.findIndex(i=>i.id==='rose'));
+/** Landmarks of an upright hand pinching at (x,y), rolled by `turn` about the pinch. */
+function handAt(x:number,y:number,turn=0,size=60):MirrorPoint[]{
+ const base:[number,number][]=Array.from({length:21},()=>[0,0]);
+ base[0]=[0,2.6];base[5]=[-.45,1];base[9]=[-.15,1];base[13]=[.15,1];base[17]=[.45,1];base[4]=[0,0];base[8]=[0,0];
+ for(const m of [5,9,13,17])for(let k=1;k<=3;k++)base[m+k]=[base[m][0],base[m][1]-k*.5];base[8]=[0,0];base[1]=[-.4,2.2];base[2]=[-.6,1.6];base[3]=[-.4,.6];
+ const c=Math.cos(turn),s=Math.sin(turn);return base.map(([bx,by])=>({x:x+(bx*c-by*s)*size,y:y+(bx*s+by*c)*size,z:0}));
+}
+test('wrist roll is read from the landmarks: turning the hand turns the reading by the same angle',()=>{
+ const r0=handRoll(handAt(300,300))!,r1=handRoll(handAt(300,300,.5))!;assert.ok(near(r1-r0,.5,1e-6),`${r1-r0}`);
+ assert.equal(handRoll([]),null);
 });
-test('state round-trips and the phone dial is the dry-down clock',()=>{
- const s=initialOrgan();assert.deepEqual(validateOrgan(JSON.parse(JSON.stringify(s))),s);assert.throws(()=>validateOrgan({...s,schema:2}));
- assert.equal(organDescriptor(s,90).motionLabel,'dry-down');
+test('ribbon: lavender alone is bright at 9:00, thin by 11:00 and gone by noon; base notes carry the evening',()=>{
+ const r=ribbon({lavender:8}),at=(h:number)=>r.total[Math.round(h/DAY*(r.t.length-1))]/r.total[0];
+ assert.ok(at(2)<.25,`11:00 ${at(2)}`);assert.ok(at(3)<.1,`noon ${at(3)}`);
+ const f=ribbon(FOUGERE.items);assert.ok(f.total.at(-1)!/f.total[0]>.2,'the fougère still smells at 18:00');
+ assert.deepEqual(f.bands.map(b=>b.id),['tonka','oakmoss','lavender'],'longest-lasting at the bottom');
+ assert.ok(near(total(FOUGERE.items),16));
+ const scaled=ribbon({lavender:1,tonka:.75,oakmoss:.25},'normal',16);assert.ok(near(scaled.total[5],f.total[5],1e-9),'resized to the outline, only proportions matter');
+ assert.ok(ribbon(FOUGERE.items,'warm').total.at(-1)!<f.total.at(-1)!,'warm skin squeezes the day left');
+});
+test('match: the outline itself is full, its ratio at any size is full, and the misses are named',()=>{
+ assert.ok(near(matchScore(FOUGERE.items,FOUGERE.items).score,1,1e-9));
+ assert.ok(near(matchScore({lavender:16,tonka:12,oakmoss:4},FOUGERE.items).score,1,1e-9),'twice as much, same ratio');
+ assert.ok(matchScore({lavender:8},FOUGERE.items).score<.5,'lavender alone leaves the evening empty');
+ assert.ok(matchScore({lavender:4,tonka:2,oakmoss:1},FOUGERE.items).score>=LOCK,'close enough locks');
+ const muddy={lavender:4,tonka:3,oakmoss:3};assert.ok(matchScore(muddy,FOUGERE.items).score<LOCK);
+ const d=diagnose(muddy,FOUGERE.items);assert.equal(d.kind,'less');assert.equal(d.id,'oakmoss');assert.match(d.text,/damp and heavy/);
+ const thin=diagnose({lavender:8,tonka:2,oakmoss:1},FOUGERE.items);assert.equal(thin.kind,'more');assert.equal(thin.id,'tonka');
+ assert.ok(matchScore({...FOUGERE.items,rose:4},FOUGERE.items).score<1,'a stranger costs');
+ assert.ok(matchScore({bergamot:6,rose:5,oakmoss:3},CHYPRE.items).score>.99);assert.equal(matchScore({},FOUGERE.items).score,0);
+});
+test('balance: the pair bar is one material’s share of the two, and the fougère’s notch is 3 : 1',()=>{
+ assert.ok(near(balance(FOUGERE.items,'tonka','oakmoss'),.75));assert.equal(balance({},'tonka','oakmoss'),.5);assert.equal(balance({tonka:2},'tonka','oakmoss'),1);
+});
+test('smell words come before chemistry: plain at 9:00, damp when the moss is heavy, almost nothing when it is gone',()=>{
+ assert.deepEqual(smellAt({lavender:8},0),['fresh','herbal']);
+ assert.deepEqual(smellAt({lavender:2,tonka:1,oakmoss:6},0),['damp','heavy']);
+ const peak=ribbon({lavender:8},'normal',null,2).total[0];assert.deepEqual(smellAt({lavender:8},8,'normal',peak),['almost nothing']);
+ assert.ok(smellAt(FOUGERE.items,6).includes('sweet'));
+});
+const facts=(f:Partial<Facts>={}):Facts=>({items:{},held:[],wafts:0,scrubbed:0,score:0,diagnosis:'',swapped:false,kept:1,pair:.5,clock:0,words:[],poked:false,...f});
+test('chapters advance on what the hands did, and the text earns each term after it is seen',()=>{
+ const s=new Story(),run=(f:Partial<Facts>,secs=.1)=>{let out=null;for(let t=0;t<secs;t+=.05)out=s.update(facts(f),.05)??out;return out;};
+ assert.equal(s.beat,'intro');assert.deepEqual(s.view(facts()).vials,['tonka','lavender','oakmoss']);assert.equal(s.view(facts()).labelOn,false);
+ run({poked:true});assert.equal(s.beat,'lavender');assert.deepEqual(s.view(facts()).active,['lavender']);
+ run({items:{lavender:3}},1);assert.equal(s.beat,'lavender','not enough yet');
+ run({items:{lavender:6},held:[{id:'lavender',inZone:true,rate:2}]},1);assert.equal(s.beat,'lavender','still pouring');
+ run({items:{lavender:6}},.7);assert.equal(s.beat,'waft');assert.equal(s.view(facts()).ribbonLive,false,'the ribbon waits for the first smell');
+ run({items:{lavender:6},wafts:1});assert.equal(s.beat,'top');assert.ok(s.view(facts()).ribbonLive);assert.match(s.view(facts()).text,/top note/);
+ run({items:{lavender:6},wafts:1},5);assert.equal(s.beat,'carry');assert.ok(s.view(facts()).gestures.includes('both'));
+ const muddy=s.view(facts({items:{lavender:6,oakmoss:3,tonka:1},pair:.25,held:[{id:'oakmoss',inZone:true,rate:2}]}));assert.match(muddy.sub,/damp and heavy/);
+ run({items:{lavender:6,tonka:4.5,oakmoss:1.5}},1);assert.equal(s.beat,'scrub');
+ run({items:{lavender:6,tonka:4.5,oakmoss:1.5},scrubbed:6,score:.5,diagnosis:'The evening is thin: pour a little more tonka.'});assert.equal(s.beat,'adjust');assert.match(s.view(facts({diagnosis:'The evening is thin: pour a little more tonka.'})).text,/evening is thin/);
+ assert.equal(run({scrubbed:6,score:.9},1),'locked');assert.equal(s.beat,'reveal');
+ const reveal=s.view(facts());assert.match(reveal.text,/fougère/);assert.match(reveal.sub,/coumarin \(tonka\)/);assert.ok(reveal.offer&&reveal.locked>=0);
+ s.original={...FOUGERE.items};s.next();assert.equal(s.chapter,2);assert.equal(s.beat,'rule');assert.ok(s.view(facts()).labelOn);assert.deepEqual(s.ghost,FOUGERE.items);
+ assert.ok(!s.view(facts()).active.includes('oakmoss'),'oakmoss is restricted');
+ run({swapped:true},1.2);assert.equal(s.beat,'insight');assert.match(s.view(facts({kept:.7})).text,/70% of the character/);
+ s.next();assert.equal(s.beat,'chypre');assert.deepEqual(s.ghost,CHYPRE.items);
+ assert.equal(run({score:.85},1),'locked');assert.equal(s.beat,'chypreReveal');s.next();assert.equal(s.beat,'free');assert.equal(s.view(facts()).vials.length,21);assert.equal(s.ghost,null);
+ s.goto(1);assert.equal(s.beat,'intro');
 });
 
-// ---- The engine, against a flat fake world: vials on a row at y=100, the flask at (400,400).
+// ---- The engine, against a flat fake world 1000×800 where mirror points are stage pixels.
 function rig(){
- const vials=Array.from({length:vialCount},(_,i)=>({x:60+i*150,y:100,on:true}));
- const world={partCount:0,mirrorToWorld:(p:MirrorPoint)=>({x:p.x,y:p.y,z:0}),partAt:()=>-1,stage:(p:MirrorPoint)=>({x:p.x,y:p.y}),vial:(i:number)=>vials[i],flask:()=>({x:400,y:400}),palm:()=>({x:700,y:400})};
+ const world={partCount:0,size:{w:1000,h:800},mirrorToWorld:(p:MirrorPoint)=>({x:p.x,y:p.y,z:0}),partAt:()=>-1,stage:(p:MirrorPoint)=>({x:p.x,y:p.y})};
  const engine=new OrganEngine(world);let at=0;const view={q:[0,0,0,1] as [number,number,number,number],zoom:1,x:0,y:0};
- const hand=(pose:HandPose,x:number,y:number,id=1):TrackedHand=>{const p={x,y,z:0};return {id,side:'left',pose,landmarks:[],palm:p,indexTip:p,pinch:p,orientation:null,velocity:{x:0,y:0},poseAge:5};};
- const run=(hands:TrackedHand[],seconds=1/60,events:GestureEvent[]=[])=>{let out;const n=Math.max(1,Math.round(seconds*60));for(let i=0;i<n;i++)out=engine.step({at:at+=16,hands,events:i?[]:events} as GestureFrame,1/60,view,false);return out!;};
- return {engine,run,hand,vials};
+ const hand=(pose:HandPose,x:number,y:number,id=1,turn=0):TrackedHand=>{const l=handAt(x,y,turn);if(pose==='open'){l[4]={x:x-110,y:y+40,z:0};}const palm={x,y:y+80,z:0};return {id,side:'left',pose,landmarks:l,palm,indexTip:{x,y,z:0},pinch:{x,y,z:0},orientation:null,velocity:{x:0,y:0},poseAge:5};};
+ const run=(hands:TrackedHand[],seconds=1/60)=>{let out;const n=Math.max(1,Math.round(seconds*60));for(let i=0;i<n;i++)out=engine.step({at:at+=16,hands,events:[]} as GestureFrame,1/60,view,false);return out!;};
+ run([]);const slot=(id:string)=>engine.scene.slots.find(s=>s.id===id)!;
+ return {engine,run,hand,slot,palm:palmAt(1000,800)};
 }
-test('a pinch takes the nearest vial within the magnet, and the pull toward the flask sets the dose',()=>{
- const {engine,run,hand,vials}=rig(),rose=vialIndex('rose'),v=vials[rose];
- run([hand('pinch',v.x+MAGNET*.8,v.y)]);assert.equal(engine.scene.grab?.vial,rose,'a generous hit volume');
- const to={x:400,y:400},step=(k:number)=>run([hand('pinch',v.x+(to.x-v.x)*k,v.y+(to.y-v.y)*k)]);
- step(.3);const some=engine.scene.grab!.drops;step(.8);assert.ok(engine.scene.grab!.drops>some,'further is more');
- const out=run([]);assert.equal(out.view,null,'never a camera patch');assert.ok(engine.scene.grab?.loose,'let go starts the grace window');
- run([],GRACE+.1);assert.equal(engine.scene.grab,null);assert.equal(engine.doc.blend.items[0].id,'rose');assert.ok(engine.doc.blend.items[0].drops>=8);
+test('pick up, carry level (nothing pours), tilt to pour over the palm, and one undo takes the whole pour back',()=>{
+ const {engine,run,hand,slot,palm}=rig();run([],4);assert.equal(engine.story.beat,'lavender');
+ const v=slot('lavender');run([hand('pinch',v.x+v.r*.8,v.y)]);assert.equal(engine.scene.held[0]?.id,'lavender','a generous hit circle');
+ assert.ok(engine.scene.acks.some(a=>/tilt your wrist/.test(a.text)),'acknowledged at once');
+ const over={x:palm.x,y:palm.y-120};assert.ok(inZone(over,1000,800));
+ run([hand('pinch',over.x,over.y)],1);assert.equal(total(engine.doc.items),0,'level: nothing pours');
+ run([hand('pinch',over.x,over.y,1,.9)],1);const poured=engine.doc.items.lavender;assert.ok(poured>2.5&&poured<5.5,`${poured} drops in a second at 0.9 rad`);
+ run([hand('pinch',over.x,over.y,1,0)],.5);const level=engine.doc.items.lavender;run([hand('pinch',over.x,over.y,1,0)],.5);assert.ok(near(engine.doc.items.lavender,level,1e-9),'level stops it');
+ run([hand('pinch',60,100,1,.9)],.5);assert.ok(near(engine.doc.items.lavender,level,1e-9),'away from the palm nothing lands');assert.ok(engine.scene.acks.some(a=>a.miss&&/over your palm/.test(a.text)));
+ run([],GRACE+.1);assert.equal(engine.scene.held.length,0);assert.equal(engine.history.size,1,'one pour, one undo step');
+ run([hand('thumbDown',500,600)],UNDO_HOLD+.1);assert.equal(total(engine.doc.items),0);
 });
-test('a flicker inside the grace window re-attaches to the same vial; a pinch on nothing is a miss',()=>{
- const {engine,run,hand,vials}=rig(),v=vials[vialIndex('lemon')];
- run([hand('pinch',v.x,v.y)]);run([hand('pinch',v.x+50,v.y+80)]);run([hand('open',v.x+50,v.y+80)],GRACE*.5);
- assert.ok(engine.scene.grab?.loose);run([hand('pinch',v.x+60,v.y+85,2)]);
- assert.ok(engine.scene.grab&&!engine.scene.grab.loose,'a new hand id close by picks it back up');assert.equal(engine.doc.blend.items.length,0,'nothing poured yet');
- run([],GRACE+.1);assert.equal(engine.doc.blend.items.length,1);
- run([hand('pinch',900,700,3)]);assert.ok(engine.scene.acks.some(a=>a.miss&&/Nothing in reach/.test(a.text)));
+test('a flickering pinch re-attaches inside the grace window; a pinch on nothing is acknowledged as a miss',()=>{
+ const {engine,run,hand,slot,palm}=rig();run([],4);const v=slot('lavender');
+ run([hand('pinch',v.x,v.y)]);run([hand('pinch',palm.x,palm.y-120)]);run([hand('open',palm.x,palm.y-120)],GRACE*.5);
+ assert.ok(engine.scene.held[0]?.loose);run([hand('pinch',palm.x+20,palm.y-110,2)]);assert.ok(engine.scene.held[0]&&!engine.scene.held[0].loose);
+ run([],GRACE+.1);run([hand('pinch',40,760,3)]);assert.ok(engine.scene.acks.some(a=>a.miss&&/Nothing in reach/.test(a.text)));
 });
-test('deliberate poses act only after their hold, show progress, and every action is undoable',()=>{
- const {engine,run,hand}=rig();
- run([hand('thumbUp',600,600)],(HOLD.thumbUp!)*.5);assert.ok(engine.scene.holds[0].progress>.3&&engine.scene.holds[0].progress<1);
- run([hand('thumbUp',600,600)],HOLD.thumbUp!);assert.ok(engine.scene.acks.some(a=>a.miss&&/nothing to spray/.test(a.text)),'an empty flask answers');
- engine.add('rose',4,{x:0,y:0});engine.add('clove',6,{x:0,y:0});
- run([hand('open',600,600)],HOLD.open!*.6);assert.equal(engine.doc.fan,false,'not before the hold');run([hand('open',600,600)],HOLD.open!*.6);assert.equal(engine.doc.fan,true);
- run([hand('love',600,600)],HOLD.love!+.1);assert.equal(engine.doc.skin,'warm');
- run([]);run([hand('thumbUp',600,600)],HOLD.thumbUp!+.1);assert.equal(engine.doc.mode,'drydown');assert.equal(engine.scene.sprays,1);
- run([],1);assert.ok(engine.scene.clock>.3,'the dry-down runs');
- run([hand('open',100,600,4),hand('open',300,600,5)],.1,[{type:'clap',x:200,y:600}]);assert.ok(engine.doc.compliance&&engine.doc.compliance.changes.length>0);
- assert.equal(engine.doc.fan,true,'two open hands on their way to a clap do not toggle the fan');
- const undos=[()=>engine.doc.compliance===null,()=>engine.doc.mode==='compose',()=>engine.doc.skin==='normal',()=>engine.doc.fan===false,()=>!engine.doc.blend.items.some(a=>a.id==='clove')];
- for(const ok of undos){run([]);run([hand('thumbDown',600,600)],HOLD.thumbDown!+.1);assert.ok(ok(),engine.scene.acks.map(a=>a.text).join('|'));}
+test('a waft is an up stroke and a turn back with an open hand; a reach that ends at a vial is not',()=>{
+ const {engine,run,hand,slot}=rig();engine.doc.items={lavender:6};
+ const stroke=(x:number,ys:number[])=>{for(const y of ys)run([hand('open',x,y)],.06);};
+ stroke(900,[700,660,620,580,540,520,540,560]);assert.ok(engine.scene.puffs.length===1,'wafted');assert.deepEqual(engine.scene.puffs[0].words,['fresh','herbal']);
+ const v=slot('tonka');run([],1.5);stroke(v.x,[v.y+300,v.y+240,v.y+180,v.y+120,v.y+60,v.y+20,v.y+30,v.y+40]);assert.equal(engine.scene.puffs.length,1,'reaching to a vial is inert');
 });
-test('two fists set strength on release; two pinches split apart and bottle when pushed together',()=>{
- const {engine,run,hand}=rig();engine.add('rose',5,{x:0,y:0});engine.add('musk',5,{x:0,y:0});
- run([hand('fist',400,600,1),hand('fist',500,600,2)],.3);run([hand('fist',300,600,1),hand('fist',600,600,2)],.1);
- assert.ok(engine.scene.conc!>.15);assert.equal(engine.doc.blend.conc,.15,'live until let go');run([]);assert.ok(engine.doc.blend.conc>.15);
- run([hand('pinch',380,650,3),hand('pinch',420,650,4)],.3);run([hand('pinch',150,650,3),hand('pinch',650,650,4)],.5);assert.ok(engine.scene.split>.8);
- run([]);run([hand('pinch',150,650,5),hand('pinch',650,650,6)],.3);run([hand('pinch',350,650,5),hand('pinch',450,650,6)],.1);
- assert.equal(engine.doc.stack.length,1);assert.equal(dropCount(engine.doc.blend),0);
+test('chapter 2: pouring the stand-in swaps out the oakmoss, the evening shrinks, the label names it, and undo brings it back',()=>{
+ const {engine,run,hand,slot,palm}=rig();engine.goto(2);run([]);
+ assert.deepEqual(engine.doc.items,FOUGERE.items,'skipping here starts from the reference accord');
+ const l=label({items:Object.entries(engine.doc.items).map(([id,drops])=>({id,drops})),conc:.08}).find(x=>x.id==='oakmoss')!;assert.ok(l.declared&&l.flagged);
+ const o=slot('oakmoss');run([hand('pinch',o.x,o.y)]);assert.equal(engine.scene.held.length,0,'oakmoss is restricted now');run([],GRACE+.1);
+ const m=slot('moss-accord');run([hand('pinch',m.x,m.y)]);run([hand('pinch',palm.x,palm.y-120)],.3);run([hand('pinch',palm.x,palm.y-120,1,.8)],.6);
+ const swap=engine.doc.swap!;assert.ok(swap&&swap.kept<1&&swap.kept>.3,`kept ${swap?.kept}`);assert.equal(engine.doc.items.oakmoss,undefined);assert.ok(engine.doc.items['moss-accord']>2);
+ const late=(it:Record<string,number>)=>ribbon(it,'normal',16).total.at(-1)!;assert.ok(late(engine.doc.items)<late(FOUGERE.items),'the evening shrinks');
+ assert.ok(label({items:Object.entries(engine.doc.items).map(([id,drops])=>({id,drops})),conc:.08}).every(x=>!x.flagged),'under every limit');
+ run([],GRACE+.1);run([hand('thumbDown',500,600)],UNDO_HOLD+.1);assert.ok(engine.doc.swap,'first undo: the extra pour');run([]);run([hand('thumbDown',500,600,2)],UNDO_HOLD+.1);
+ assert.equal(engine.doc.swap,null);assert.deepEqual(engine.doc.items,FOUGERE.items,'second undo: the swap');
+ assert.deepEqual(makeCompliant({items:[{id:'lavender',drops:8},{id:'tonka',drops:6},{id:'oakmoss',drops:2}],conc:.08}).changes.map(c=>c.id),['oakmoss'],'at this strength only the oakmoss must change');
+});
+test('a turning fist moves through the day once the ribbon is live; the mouse wheel tilts a clicked vial, never the camera',()=>{
+ const {engine,run,hand,slot,palm}=rig();engine.goto(3);run([]);
+ const f=(turn:number)=>hand('fist',500,600,1,turn);run([f(0)],.3);for(let i=1;i<=10;i++)run([f(i*.1)],.05);assert.ok(engine.scene.clock>2.5,`${engine.scene.clock} h`);
+ run([],.1);const b=slot('bergamot');assert.ok(engine.pointerDown({x:b.x,y:b.y,z:0}));engine.pointerUp();assert.ok(engine.mouseHolding,'a click holds it');
+ engine.hover({x:palm.x,y:palm.y-120,z:0});assert.equal(engine.wheel(400),true);const out=run([],1);assert.ok(engine.doc.items.bergamot>2);assert.equal(out.view,null,'never a camera patch');
+ engine.wheel(-400);engine.pointerDown({x:palm.x,y:palm.y-120,z:0});assert.ok(!engine.mouseHolding);assert.equal(engine.wheel(100),false,'with nothing held the wheel zooms as usual');
+});
+test('layout: every target is at least 60 px across, low and central, above the ribbon',()=>{
+ for(const ids of [['tonka','lavender','oakmoss'],organ.map(i=>i.id)]){const sl=slots(ids,1280,760),p=palmAt(1280,760);for(const s of sl){assert.ok(s.r>=30);assert.ok(s.y<p.y&&s.y>760*.25,`${s.id} ${s.y}`);}}
+});
+test('state round-trips and the phone dial is the day',()=>{
+ const s=initialOrgan();assert.deepEqual(validateOrgan(JSON.parse(JSON.stringify(s))),s);assert.throws(()=>validateOrgan({...s,schema:2}));
+ assert.equal(organDescriptor(s,90).motionLabel,'day');
 });

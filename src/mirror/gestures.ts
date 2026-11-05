@@ -1,7 +1,7 @@
 import {Matrix4,Quaternion,Vector3} from 'three';
 import type {Landmark} from '../fist';
 import type {Quat} from '../types';
-import type {GestureEvent,GestureFrame,HandPose,HandSide,MirrorPoint,TrackedHand} from './contracts';
+import type {GestureEvent,GestureFrame,HandPose,HandShape,HandSide,MirrorPoint,TrackedHand} from './contracts';
 
 const PINCH_ON=.35,PINCH_OFF=.55,CONFIRM_MS=90,PINCH_MS=50,UNPINCH_MS=120,UNTHUMB_MS=200,NONE_MS=220,LOST_MS=200,MATCH=.25,FOLDED_REACH=1.15;
 // Gaps are in palm lengths. The tracker finds no hands in a real clap, so Shock fires as the hands close, before contact hides them.
@@ -62,13 +62,15 @@ export function palmOrientation(hand:Landmark[]):Quat|null {
  return new Quaternion().setFromRotationMatrix(new Matrix4().makeBasis(side,up,normal)).toArray() as Quat;
 }
 const average=(points:MirrorPoint[],ids:number[])=>{const sum=ids.reduce((p,i)=>({x:p.x+points[i].x,y:p.y+points[i].y,z:p.z+points[i].z}),{x:0,y:0,z:0});return {x:sum.x/ids.length,y:sum.y/ids.length,z:sum.z/ids.length};};
-interface Track {id:number;side:HandSide;pose:HandPose;candidate:HandPose;since:number;seen:number;at:number;poseAge:number;points:MirrorPoint[];palm:MirrorPoint;velocity:{x:number;y:number};orientation:Quat|null;fresh:boolean}
+interface Track {id:number;side:HandSide;pose:HandPose;candidate:HandPose;since:number;seen:number;at:number;poseAge:number;points:MirrorPoint[];palm:MirrorPoint;velocity:{x:number;y:number};orientation:Quat|null;fresh:boolean;shape?:HandShape}
 
 export class GestureTracker {
  private tracks:Track[]=[];private nextId=1;private previous:{gap:number;at:number;x:number;y:number}|null=null;private armed=false;private lastClap=-Infinity;
+ /** shape: also hand each tracked hand's raw landmarks on, for an object that reads joint angles. Off, frames are exactly as before. */
+ constructor(private readonly options:{shape?:boolean}={}){}
  reset(){this.tracks=[];this.previous=null;this.armed=false;}
  update(hands:Landmark[][],at:number,world:Landmark[][]=[],handedness:(string|null)[]=[],aspect=1):GestureFrame {
-  const events:GestureEvent[]=[],scale=Math.max(.1,aspect),inputs=hands.map((raw,index)=>({raw,index})).filter(({raw})=>valid(raw)).map(({raw,index})=>({points:raw.map(toMirror),metric:valid(world[index])?world[index]:raw.map(p=>({...p,y:p.y/scale})),image:raw.map(p=>({...p,y:p.y/scale})),side:sideFromLabel(handedness[index])}));
+  const events:GestureEvent[]=[],scale=Math.max(.1,aspect),inputs=hands.map((raw,index)=>({raw,index})).filter(({raw})=>valid(raw)).map(({raw,index})=>({points:raw.map(toMirror),metric:valid(world[index])?world[index]:raw.map(p=>({...p,y:p.y/scale})),image:raw.map(p=>({...p,y:p.y/scale})),side:sideFromLabel(handedness[index]),world:valid(world[index])}));
   // Nearest wrist first: the tracker reorders hands between frames.
   const pairs=this.tracks.flatMap(track=>inputs.map((input,i)=>({track,i,gap:planar(track.points[0],input.points[0])}))).filter(p=>p.gap<MATCH).sort((a,b)=>a.gap-b.gap);
   const used=new Set<number>(),matched=new Set<Track>();this.tracks.forEach(t=>{t.fresh=false;});
@@ -77,9 +79,10 @@ export class GestureTracker {
   this.tracks=this.tracks.filter(track=>{if(at-track.seen<=LOST_MS)return true;events.push({type:'lost',handId:track.id});return false;});
   for(const track of this.tracks)if(!track.fresh)track.velocity={x:0,y:0};
   this.clap(at,aspect,events);
-  return {at,events,hands:this.tracks.map(t=>({id:t.id,side:t.side,pose:t.pose,landmarks:t.points.map(p=>({...p})),palm:{...t.palm},indexTip:{...t.points[8]},pinch:average(t.points,[4,8]),orientation:t.orientation,velocity:{...t.velocity},poseAge:t.poseAge}) satisfies TrackedHand)};
+  return {at,events,hands:this.tracks.map(t=>({id:t.id,side:t.side,pose:t.pose,landmarks:t.points.map(p=>({...p})),palm:{...t.palm},indexTip:{...t.points[8]},pinch:average(t.points,[4,8]),orientation:t.orientation,velocity:{...t.velocity},poseAge:t.poseAge,...(t.shape?{shape:t.shape}:{})}) satisfies TrackedHand)};
  }
- private advance(track:Track,input:{points:MirrorPoint[];metric:Landmark[];image:Landmark[];side:HandSide},at:number,events:GestureEvent[]){
+ private advance(track:Track,input:{points:MirrorPoint[];metric:Landmark[];image:Landmark[];side:HandSide;world:boolean},at:number,events:GestureEvent[]){
+  if(this.options.shape)track.shape={points:input.metric.map(p=>({x:input.world?-p.x:1-p.x,y:p.y,z:p.z})),metric:input.world};
   const dt=Math.max(.001,(at-track.at)/1000),speed=Math.hypot(track.velocity.x,track.velocity.y);
   // Velocity-adaptive low pass: steady at rest, almost no lag once the hand really moves.
   const alpha=track.at===at?1:1-Math.exp(-dt*2*Math.PI*(1.5+12*speed));

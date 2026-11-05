@@ -1,15 +1,18 @@
 import {runMirror} from '../mirror/shell';
+import type {Chapter} from './story';
 import {organObject} from './object';
 
 const debug=await runMirror(organObject);
-const engine=debug.engine,host=document.querySelector<HTMLElement>('#organ-viewport')!;
-// The cards' buttons reach every hand action by mouse and keyboard.
+const engine=debug.engine,host=document.querySelector<HTMLElement>('#organ-viewport')!,stage=document.querySelector<HTMLElement>('#organ-stage')!;
+// The HUD's buttons and ribbon reach every hand action by mouse and keyboard.
 host.addEventListener('organ-action',e=>{
- const act=(e as CustomEvent).detail,at=organObject.liveView!.flask();
- if(act==='undo')engine.undo(at);else if(act==='spray')engine.spray(organObject.liveView!.palm());else if(act==='comply')engine.compliant(at);
- else if(act==='bottle')engine.bottle(at);else if(act==='clear')engine.clearFlask();else if(act==='product')engine.setProduct(engine.doc.product==='leave-on'?'rinse-off':'leave-on');
+ const {act,value}=(e as CustomEvent).detail as {act:string;value:number},palm=engine.scene.palm;
+ if(act==='undo')engine.undo(palm);else if(act==='waft')engine.waft(palm);else if(act==='next')engine.next();else if(act==='clock')engine.setClock(value);
+ else if(act==='chapter'&&value>=1&&value<=4)engine.goto(value as Chapter);else if(act==='warm')engine.toggleWarm(palm);
 });
-window.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key==='z'&&!(e.target instanceof HTMLInputElement)){e.preventDefault();engine.undo(organObject.liveView!.flask());}});
+// While the mouse holds a vial the wheel tilts it; otherwise it zooms as on every page. Capture runs before the shell's own wheel handler.
+stage.addEventListener('wheel',e=>{if(engine.wheel(e.deltaY)){e.preventDefault();e.stopPropagation();}},{capture:true,passive:false});
+window.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key==='z'&&!(e.target instanceof HTMLInputElement)){e.preventDefault();engine.undo(engine.scene.palm);}});
 (window as any).__organ=Object.defineProperties(debug,{
- doc:{enumerable:true,get:()=>engine.doc},scene:{enumerable:true,get:()=>engine.scene},view:{enumerable:true,get:()=>organObject.liveView},
+ doc:{enumerable:true,get:()=>engine.doc},scene:{enumerable:true,get:()=>engine.scene},view:{enumerable:true,get:()=>organObject.liveView},story:{enumerable:true,get:()=>engine.scene.story},
 });
