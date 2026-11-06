@@ -58,6 +58,33 @@ function pulley(radius:number,width:number,mats:Mats){
 }
 const basisOf=(l:Link,q:T.Quaternion)=>q.setFromRotationMatrix(new T.Matrix4().makeBasis(vec(l.axis),vec(l.along),vec(l.pad)));
 
+/** A translucent human hand in the grasp joint model: a capsule per bone, a dot per joint, a palm and a wrist, and a red glow at each joint that is off. Its group sits at the wrist. */
+export class GhostHand {
+ readonly group=new T.Group();readonly hand=new T.Group();readonly residual:T.Sprite[]=[];
+ private readonly links:T.Mesh[]=[];private readonly joints:T.Mesh[]=[];
+ constructor(body:T.Material,private readonly edge:T.Material,glow:T.Texture,scale=CM*GHOST_SCALE){
+  this.hand.matrixAutoUpdate=false;this.hand.matrix.copy(handBasis()).scale(new T.Vector3(scale,scale,scale));this.group.add(this.hand);
+  for(let i=0;i<15;i++){
+   const d=Math.floor(i/3),k=i%3,spec=d===0?{lengths:THUMB.lengths,radius:THUMB.radius}:FINGERS[d-1];
+   const cap=new T.Mesh(new T.CapsuleGeometry(spec.radius[k]*.92,Math.max(.1,spec.lengths[k]-spec.radius[k]*1.2),6,14),body);cap.geometry.translate(0,spec.lengths[k]/2,0);this.links.push(cap);this.hand.add(cap);
+   const joint=new T.Mesh(new T.SphereGeometry(.42,14,10),edge);this.joints.push(joint);this.hand.add(joint);
+   const s=new T.Sprite(new T.SpriteMaterial({map:glow,color:'#ff3b30',transparent:true,blending:T.AdditiveBlending,depthWrite:false,depthTest:false,opacity:0}));s.renderOrder=5;this.residual.push(s);this.hand.add(s);
+  }
+  const palm=new T.Mesh(new RoundedBoxGeometry(PALM.x1-PALM.x0,PALM.y1-PALM.y0,1.8,4,.8),body);palm.position.set(0,(PALM.y1-PALM.y0)/2,-1);this.hand.add(palm);
+  const wrist=new T.Mesh(new T.CapsuleGeometry(2.6,3,6,16),body);wrist.position.set(0,-2.4,-1);wrist.scale.set(1.1,1,.55);this.hand.add(wrist);
+ }
+ /** Poses the joints (0 flat to 1 fist), with finger spread and a residual per joint; the thumb dots take `unsureMat` while its reading is held. */
+ pose(user:ArrayLike<number>,spread:[number,number,number,number],residual:ArrayLike<number>,thumbUnsure=false,unsureMat?:T.Material){
+  forward(user,true,{abd:spread}).forEach((l,i)=>{
+   this.links[i].position.copy(vec(l.origin));basisOf(l,this.links[i].quaternion);this.joints[i].position.copy(vec(l.origin));
+   const r=residualGlow(residual[row(l.digit,l.k)]),sp=this.residual[i];sp.position.copy(vec(l.origin));sp.scale.setScalar(2+3*r);(sp.material as T.SpriteMaterial).opacity=r*.8;
+   // A thumb the camera has lost is drawn dim and amber: it is holding its last good reading.
+   this.joints[i].material=l.digit===0&&thumbUnsure&&unsureMat?unsureMat:this.edge;
+  });
+  this.group.visible=true;
+ }
+}
+
 class Tendon {
  readonly line:Line2;private geo=new LineGeometry();
  constructor(color:string,width:number,res:T.Vector2,dashed=false){const mat=new LineMaterial({color,linewidth:width,worldUnits:false,transparent:true,opacity:.95,dashed,dashSize:.08,gapSize:.06,side:T.DoubleSide,depthTest:true});mat.resolution=res;this.line=new Line2(this.geo,mat);this.line.frustumCulled=false;this.line.renderOrder=3;}
@@ -69,11 +96,11 @@ class Tendon {
 export class GraspView implements MirrorView<GraspScene> {
  readonly ready:Promise<void>;readonly scene=new T.Scene();readonly camera=new T.PerspectiveCamera(34,1,.1,100);readonly renderer:T.WebGLRenderer;
  readonly root=new T.Group();readonly partCount=0;
- private readonly mats=materials();private readonly glowMap=glowTexture();
- readonly robot=new T.Group();private readonly ghost=new T.Group();private readonly robotHand=new T.Group();private readonly ghostHand=new T.Group();
- private readonly links:T.Group[]=[];private readonly pulleys:T.Group[]=[];private readonly ghostLinks:T.Mesh[]=[];private readonly ghostJoints:T.Mesh[]=[];
- private readonly residualSprites:T.Sprite[]=[];private readonly ghostResidual:T.Sprite[]=[];private readonly contactSprites:T.Sprite[]=[];private readonly forceLines:Tendon[]=[];
- private readonly objects=new Map<GraspId,T.Group>();private readonly stand=new T.Group();private readonly bay=new T.Group();
+ readonly mats=materials();readonly glowMap=glowTexture();
+ readonly robot=new T.Group();private readonly robotHand=new T.Group();readonly ghostHand:GhostHand;
+ private readonly links:T.Group[]=[];private readonly pulleys:T.Group[]=[];
+ private readonly residualSprites:T.Sprite[]=[];private readonly contactSprites:T.Sprite[]=[];private readonly forceLines:Tendon[]=[];
+ private readonly objects=new Map<GraspId,T.Group>();readonly stand=new T.Group();private readonly bay=new T.Group();
  private readonly tendons:Tendon[]=[];private readonly bars:T.Mesh[]=[];private readonly spools:T.Group[]=[];private readonly fourBars:T.Mesh[]=[];
  private readonly res=new T.Vector2(1,1);private lastMotors=-1;
  private readonly resizeObserver:ResizeObserver;private videoAspect=0;private zoom=1;private width=1;private height=1;private disposed=false;private contextLost=false;
@@ -89,11 +116,12 @@ export class GraspView implements MirrorView<GraspScene> {
   room.traverse(o=>{if(o instanceof T.Mesh){o.geometry.dispose();(o.material as T.Material).dispose();}});
   const key=new T.DirectionalLight('#fff1dc',1.7);key.position.set(-4,8,10);const rim=new T.DirectionalLight('#8fd2ff',1.1);rim.position.set(7,2,-6);
   this.scene.add(key,rim,new T.HemisphereLight('#c9dcff','#1a1410',.35),this.root);
-  this.root.add(this.robot,this.ghost);
-  this.robot.position.copy(ROBOT_AT);this.ghost.position.copy(GHOST_AT);
-  for(const [g,s] of [[this.robotHand,CM],[this.ghostHand,CM*GHOST_SCALE]] as const){g.matrixAutoUpdate=false;g.matrix.copy(handBasis()).scale(new T.Vector3(s,s,s));}
-  this.robot.add(this.robotHand);this.ghost.add(this.ghostHand);
-  this.buildRobot();this.buildGhost();this.buildObjects();
+  this.ghostHand=new GhostHand(this.mats.ghost,this.mats.ghostEdge,this.glowMap);
+  this.root.add(this.robot,this.ghostHand.group);
+  this.robot.position.copy(ROBOT_AT);this.ghostHand.group.position.copy(GHOST_AT);
+  this.robotHand.matrixAutoUpdate=false;this.robotHand.matrix.copy(handBasis()).scale(new T.Vector3(CM,CM,CM));
+  this.robot.add(this.robotHand);
+  this.buildRobot();this.buildObjects();
   this.renderer.domElement.addEventListener('webglcontextlost',this.onLost);this.renderer.domElement.addEventListener('webglcontextrestored',this.onRestored);
   this.resizeObserver=new ResizeObserver(()=>this.resize());this.resizeObserver.observe(host);this.resize();
   this.ready=Promise.resolve();
@@ -122,16 +150,6 @@ export class GraspView implements MirrorView<GraspScene> {
   const post=new T.Mesh(new T.CylinderGeometry(.05,.07,1,12),m.acrylic),foot=new T.Mesh(new T.CylinderGeometry(.35,.42,.05,32),m.acrylic);this.stand.add(post,foot);this.root.add(this.stand);
   for(let i=0;i<15;i++){const s=new T.Sprite(new T.SpriteMaterial({map:this.glowMap,color:'#ff3b30',transparent:true,blending:T.AdditiveBlending,depthWrite:false,depthTest:false,opacity:0}));s.renderOrder=5;this.residualSprites.push(s);this.robotHand.add(s);}
   for(let i=0;i<24;i++){const s=new T.Sprite(new T.SpriteMaterial({map:this.glowMap,color:'#fff2c2',transparent:true,blending:T.AdditiveBlending,depthWrite:false,depthTest:false,opacity:0}));s.renderOrder=6;this.contactSprites.push(s);this.robotHand.add(s);const f=new Tendon('#ffe9a8',2.2,this.res);this.forceLines.push(f);this.robotHand.add(f.line);}
- }
- private buildGhost(){
-  for(let i=0;i<15;i++){
-   const d=Math.floor(i/3),k=i%3,spec=d===0?{lengths:THUMB.lengths,radius:THUMB.radius}:FINGERS[d-1];
-   const cap=new T.Mesh(new T.CapsuleGeometry(spec.radius[k]*.92,Math.max(.1,spec.lengths[k]-spec.radius[k]*1.2),6,14),this.mats.ghost);cap.geometry.translate(0,spec.lengths[k]/2,0);this.ghostLinks.push(cap);this.ghostHand.add(cap);
-   const joint=new T.Mesh(new T.SphereGeometry(.42,14,10),this.mats.ghostEdge);this.ghostJoints.push(joint);this.ghostHand.add(joint);
-   const s=new T.Sprite(new T.SpriteMaterial({map:this.glowMap,color:'#ff3b30',transparent:true,blending:T.AdditiveBlending,depthWrite:false,depthTest:false,opacity:0}));s.renderOrder=5;this.ghostResidual.push(s);this.ghostHand.add(s);
-  }
-  const palm=new T.Mesh(new RoundedBoxGeometry(PALM.x1-PALM.x0,PALM.y1-PALM.y0,1.8,4,.8),this.mats.ghost);palm.position.set(0,(PALM.y1-PALM.y0)/2,-1);this.ghostHand.add(palm);
-  const wrist=new T.Mesh(new T.CapsuleGeometry(2.6,3,6,16),this.mats.ghost);wrist.position.set(0,-2.4,-1);wrist.scale.set(1.1,1,.55);this.ghostHand.add(wrist);
  }
  private buildObjects(){
   const m=this.mats;
@@ -179,7 +197,7 @@ export class GraspView implements MirrorView<GraspScene> {
  pointToWorld(cx:number,cy:number):WorldPoint{const r=this.renderer.domElement.getBoundingClientRect();return this.unproject((cx-r.left)/(r.width||1)*2-1,1-(cy-r.top)/(r.height||1)*2,0);}
  partAt(){return -1;}
  /** A hand-frame point (cm) on the stage, pixels. */
- screenOf(p:V3,ghost=false){v.copy(vec(p)).applyMatrix4((ghost?this.ghostHand:this.robotHand).matrixWorld).project(this.camera);return {x:(v.x+1)/2*this.width,y:(1-v.y)/2*this.height,behind:v.z>1};}
+ screenOf(p:V3,ghost=false){v.copy(vec(p)).applyMatrix4((ghost?this.ghostHand.hand:this.robotHand).matrixWorld).project(this.camera);return {x:(v.x+1)/2*this.width,y:(1-v.y)/2*this.height,behind:v.z>1};}
  /** The joint pulley or phalanx under a stage pixel: its joint row, or -1. */
  pick(cx:number,cy:number){
   const r=this.renderer.domElement.getBoundingClientRect();ndc.set((cx-r.left)/(r.width||1)*2-1,1-(cy-r.top)/(r.height||1)*2);ray.setFromCamera(ndc,this.camera);
@@ -189,7 +207,7 @@ export class GraspView implements MirrorView<GraspScene> {
  get size(){return {width:this.width,height:this.height};}
  /** How red a joint glows, robot or ghost, by joint row: what the browser test reads. */
  residualOpacity(i:number){return (this.residualSprites[i].material as T.SpriteMaterial).opacity;}
- ghostResidualOpacity(i:number){return (this.ghostResidual[i].material as T.SpriteMaterial).opacity;}
+ ghostResidualOpacity(i:number){return (this.ghostHand.residual[i].material as T.SpriteMaterial).opacity;}
  draw(s:GraspScene,now:number){
   if(this.disposed||this.contextLost)return;this.last=s;
   const lift=s.lift*s.lift*(3-2*s.lift)*1.6;
@@ -226,17 +244,7 @@ export class GraspView implements MirrorView<GraspScene> {
   }
   for(;n<this.contactSprites.length;n++){(this.contactSprites[n].material as T.SpriteMaterial).opacity=0;this.forceLines[n].line.visible=false;}
  }
- private poseGhost(s:GraspScene){
-  const links=forward(s.user,true,{abd:s.spread});
-  links.forEach((l,i)=>{
-   const g=this.ghostLinks[i];g.position.copy(vec(l.origin));basisOf(l,g.quaternion);
-   this.ghostJoints[i].position.copy(vec(l.origin));
-   const r=residualGlow(s.residual[row(l.digit,l.k)]),sp=this.ghostResidual[i];sp.position.copy(vec(l.origin));sp.scale.setScalar(2+3*r);(sp.material as T.SpriteMaterial).opacity=r*.8;
-   // A thumb the camera has lost is drawn dim and amber: it is holding its last good reading.
-   const unsure=l.digit===0&&s.thumbUncertain;(this.ghostJoints[i].material as T.MeshBasicMaterial)=unsure?this.uncertainMat:this.mats.ghostEdge;
-  });
-  this.ghost.visible=true;
- }
+ private poseGhost(s:GraspScene){this.ghostHand.pose(s.user,s.spread,s.residual,s.thumbUncertain,this.uncertainMat);}
  private readonly uncertainMat=new T.MeshBasicMaterial({color:'#ffb347',transparent:true,opacity:.55,blending:T.AdditiveBlending,depthWrite:false});
  private poseObject(s:GraspScene,lift:number,now:number){
   for(const [id,g] of this.objects)g.visible=id===s.object;

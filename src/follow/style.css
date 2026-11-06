@@ -1,0 +1,44 @@
+.follow-page{--mirror-accent:#8fe3c8;--mirror-accent-rgb:143,227,200;--fo-red:#ff4b3e;--fo-ok:#8dffb0;--fo-cyan:#7fdcff;--fo-panel:rgba(6,10,15,.72);--fo-line:rgba(255,255,255,.09)}
+.follow-page .mirror-stage{background:radial-gradient(ellipse at 52% 40%,#152434 0%,#0a121a 50%,#05080c 100%)}
+.follow-page .mirror-tutorial{display:none!important}
+.follow-page .mirror-count{top:12px}
+.follow-page .mirror-status{bottom:112px}
+.fo-lessons,.fo-steps,.fo-now,.fo-note,.fo-count,.fo-summary{position:absolute;z-index:4;color:var(--mirror-ink);font-size:11px}
+.fo-lessons{left:50%;top:40px;transform:translateX(-50%);display:flex;gap:4px;padding:3px;border:1px solid var(--fo-line);border-radius:12px;background:var(--fo-panel);backdrop-filter:blur(10px)}
+.fo-lessons button{padding:7px 12px;border:0;border-radius:9px;background:none;color:var(--mirror-dim);font-size:12px;transition:background .2s,color .2s}
+.fo-lessons button:hover{color:var(--mirror-ink)}
+.fo-lessons button[aria-pressed=true]{background:rgba(var(--mirror-accent-rgb),.18);color:var(--mirror-ink);box-shadow:inset 0 0 0 1px rgba(var(--mirror-accent-rgb),.5)}
+.fo-steps{left:22px;top:78px;width:236px;padding:10px 12px;border:1px solid var(--fo-line);border-radius:12px;background:var(--fo-panel);backdrop-filter:blur(10px)}
+.fo-steps>small{display:block;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--mirror-dim)}
+.fo-steps ol{margin:7px 0 0;padding:0;list-style:none;display:grid;gap:3px}
+.fo-steps li{display:grid;grid-template-columns:18px 1fr;column-gap:7px;padding:3px 4px;border-radius:6px;color:var(--mirror-dim)}
+.fo-steps li i{grid-row:span 2;display:grid;place-items:center;width:17px;height:17px;margin-top:1px;border:1px solid rgba(255,255,255,.22);border-radius:50%;font-style:normal;font-size:9.5px}
+.fo-steps li b{font:600 11.5px/1.3 'Manrope',system-ui,sans-serif}
+.fo-steps li small{font-size:9.5px;line-height:1.35}
+.fo-steps .is-now{background:rgba(var(--mirror-accent-rgb),.12);color:var(--mirror-ink)}.fo-steps .is-now i{border-color:var(--mirror-accent)}
+.fo-steps .is-done{color:var(--mirror-ink)}.fo-steps .is-done i{border-color:var(--fo-ok);background:rgba(141,255,176,.2);color:var(--fo-ok)}.fo-steps .is-done small{color:var(--fo-ok)}
+.fo-steps .is-skipped{opacity:.6}
+.fo-now{left:50%;bottom:62px;transform:translateX(-50%);display:flex;align-items:center;gap:12px;min-width:340px;max-width:560px;padding:9px 16px 9px 10px;border:1px solid var(--fo-line);border-radius:16px;background:var(--fo-panel);backdrop-filter:blur(10px)}
+.fo-now p{margin:0;display:grid;gap:3px}.fo-now b{font:600 14px/1.3 'Manrope',system-ui,sans-serif}.fo-now small{font-size:11.5px;line-height:1.4;color:var(--mirror-dim)}
+.fo-now.is-miss small{color:#ffb3a8}.fo-now.is-match small{color:var(--fo-ok)}
+.fo-ring{position:relative;width:48px;height:48px;flex:none}.fo-ring svg{width:100%;height:100%;transform:rotate(-90deg)}
+.fo-ring circle{fill:none;stroke:rgba(255,255,255,.12);stroke-width:6}.fo-ring .fo-ring-fill{stroke:var(--mirror-accent);stroke-linecap:round;stroke-dasharray:276.5;stroke-dashoffset:276.5;transition:stroke-dashoffset .1s}
+.fo-ring i{position:absolute;inset:0;display:grid;place-items:center;font-style:normal;font:600 15px/1 'Manrope',system-ui,sans-serif}
+.fo-now.is-match .fo-ring-fill{stroke:var(--fo-ok)}
+.fo-note{left:50%;top:92px;transform:translateX(-50%);margin:0;max-width:440px;padding:6px 12px;border-radius:8px;background:rgba(6,10,15,.7);text-align:center;color:rgba(238,243,242,.85);pointer-events:none}
+.fo-count{left:50%;top:50%;transform:translate(-50%,-50%);font:600 150px/1 'Manrope',system-ui,sans-serif;color:var(--mirror-accent);text-shadow:0 4px 40px rgba(0,0,0,.7);pointer-events:none}
+.fo-summary{left:50%;top:50%;transform:translate(-50%,-50%);width:min(440px,90vw);max-height:80%;overflow:auto;padding:18px 22px 16px;border:1px solid rgba(var(--mirror-accent-rgb),.3);border-radius:16px;background:rgba(6,10,15,.88);backdrop-filter:blur(12px);z-index:7}
+.fo-summary h2{margin:0 0 6px;font:600 18px/1.3 'Manrope',system-ui,sans-serif}
+.fo-total{margin:0 0 10px;font-size:12px;color:var(--mirror-dim)}.fo-total b{color:var(--fo-ok);font-size:14px}
+.fo-summary table{width:100%;border-collapse:collapse;font-size:11.5px}
+.fo-summary th{padding:3px 6px;text-align:left;font-size:9px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:var(--mirror-dim)}
+.fo-summary td{padding:4px 6px;border-top:1px solid var(--fo-line);font-variant-numeric:tabular-nums}
+.fo-bar{display:inline-block;width:52px;height:4px;margin-right:7px;border-radius:2px;background:rgba(255,255,255,.14);vertical-align:middle}.fo-bar em{display:block;height:100%;border-radius:2px;background:var(--fo-ok)}
+.fo-actions{display:flex;gap:6px;margin-top:12px}.fo-actions button{padding:7px 14px;border:1px solid rgba(255,255,255,.2);border-radius:6px;background:none;font-size:12px}
+.fo-actions button:first-child{border-color:rgba(var(--mirror-accent-rgb),.55);background:rgba(var(--mirror-accent-rgb),.14)}
+.fo-labels{position:absolute;inset:0;z-index:3;pointer-events:none}
+.fo-tag{position:absolute;left:0;top:0;translate:-50% -100%;white-space:nowrap;font:600 11px/1 'Manrope',system-ui,sans-serif;letter-spacing:.06em;text-transform:uppercase;color:rgba(238,243,242,.7);text-shadow:0 1px 8px #000}
+.fo-tag-teacher{color:var(--fo-cyan)}
+.follow-page .mirror-corner button:disabled{opacity:.35;pointer-events:none}
+.mirror-about .fo-io{display:inline}
+@media(max-width:900px){.fo-steps{display:none}.fo-lessons{top:80px;max-width:94vw;flex-wrap:wrap;justify-content:center}.fo-now{min-width:0;width:92vw;bottom:150px}}

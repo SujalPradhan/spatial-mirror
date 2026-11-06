@@ -27,5 +27,5 @@ body:has(.mirror-workspace) .hosted-preview summary{font-size:10px;color:rgba(23
  body:has(.mirror-workspace) .hosted-preview details[open]>div{position:absolute;top:30px;right:0;width:320px;padding:10px 12px;border:1px solid rgba(255,255,255,.1);border-radius:8px;background:rgba(9,14,20,.95)}
 }
 /* Centred like ATP, with clear space either side for the right-hand controls; narrower windows start it at the left instead. */
-@media(min-width:901px){.mirror-workspace .workspace-nav{max-width:calc(100% - 400px)}}
+@media(min-width:901px){.mirror-workspace .workspace-nav{max-width:calc(100% - 360px)}}
 @media(min-width:901px) and (max-width:1180px){.mirror-workspace .workspace-nav{margin-left:0;max-width:calc(100% - 300px)}}

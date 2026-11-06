@@ -1,6 +1,5 @@
 .grasp-page{--mirror-accent:#ffc861;--mirror-accent-rgb:255,200,97;--gr-red:#ff4b3e;--gr-ok:#8dffb0;--gr-cyan:#7fdcff;--gr-panel:rgba(6,10,15,.72);--gr-line:rgba(255,255,255,.09)}
 .grasp-page .mirror-stage{background:radial-gradient(ellipse at 52% 40%,#152434 0%,#0a121a 50%,#05080c 100%)}
-.grasp-page .mirror-tutorial,.grasp-page #grasp-tutorial{display:none!important}
 .grasp-page .mirror-count{top:12px}
 .grasp-page .mirror-gestures{left:236px;bottom:14px;transform:scale(.8);transform-origin:bottom left}
 .grasp-page .mirror-status{bottom:76px}
@@ -49,7 +48,7 @@
 .gr-tax .is-now{background:rgba(141,255,176,.09)}
 .gr-tax-note{margin:6px 0 0;font-size:9px;color:rgba(238,243,242,.4)}
 /* Finger close-up, bottom right. */
-.gr-zoom{right:22px;bottom:58px;width:262px;padding:8px 10px 9px;border:1px solid var(--gr-line);border-radius:12px;background:var(--gr-panel);backdrop-filter:blur(10px)}
+.gr-zoom{right:22px;bottom:94px;width:262px;padding:8px 10px 9px;border:1px solid var(--gr-line);border-radius:12px;background:var(--gr-panel);backdrop-filter:blur(10px)}
 .gr-zoom nav{display:flex;gap:2px}
 .gr-zoom nav button{flex:1;padding:4px 0;border:0;border-radius:5px;background:none;color:var(--mirror-dim);font-size:10px}
 .gr-zoom nav .is-on{background:rgba(255,255,255,.1);color:var(--mirror-ink)}
@@ -85,3 +84,4 @@
 .gr-tip em{font-style:normal;color:var(--mirror-dim)}.gr-tq b{display:inline;font-size:12px;color:var(--mirror-accent)}.gr-res{color:#ff9a90}
 .gr-note{position:absolute;z-index:4;left:50%;bottom:62px;transform:translateX(-50%);margin:0;max-width:440px;padding:6px 12px;border-radius:8px;background:rgba(6,10,15,.7);font-size:11px;text-align:center;color:rgba(238,243,242,.85);pointer-events:none}
 @media(max-width:900px){.gr-card{top:auto;bottom:150px;left:10px;width:220px}.gr-tax{display:none}.gr-zoom{display:none}.gr-motors{width:90vw;top:56px}}
+@media(min-width:901px){.grasp-page .mirror-tutorial{left:24px;top:300px;transform:none}}

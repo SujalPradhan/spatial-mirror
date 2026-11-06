@@ -40,7 +40,7 @@ export class PerfumeBehaviour implements MirrorBehaviour<PerfumeSkin,PerfumeScen
  private holdDepth=0;private rewound=false;
  private driving=0;private pressT=-1;private dragDepth=0;private dragBase=0;
  private held=-1;private returning=-1;private actuator=-1;private bottle=-1;private liquid=-1;
- private order:PartId[]=[];private seen=false;private wasStuck=false;private wasPhase='rest';private view:MirrorViewState={q:[0,0,0,1],zoom:1,x:0,y:0};
+ order:PartId[]=[];private seen=false;private wasStuck=false;private wasPhase='rest';private view:MirrorViewState={q:[0,0,0,1],zoom:1,x:0,y:0};
  private ids:string[]=[];private scene:PerfumeScene|null=null;private slot=new Float32Array(3);
  constructor(private world:PerfumeWorld){}
 

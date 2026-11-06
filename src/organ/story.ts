@@ -41,6 +41,9 @@ export class Story {
  get ghost():Items|null{const c=this.chapter;return c===1?FOUGERE.items:c===2?this.original:c===3?CHYPRE.items:null;}
  /** Jumps to the start of a chapter. The engine sets up the palm to match. */
  goto(c:Chapter){this.set(({1:'intro',2:'rule',3:'chypre',4:'free'} as const)[c]);this.live=c>1;this.lockedAt=-1;}
+ /** A watching viewer takes the presenter's place without replaying its timers. */
+ adopt(beat:Beat,original:Items|null,live:boolean){if(beat!==this.beat)this.lockedAt=beat==='reveal'||beat==='chypreReveal'?this.t:-1;this.set(beat);this.original=original?{...original}:null;this.live=live;}
+ get isLive(){return this.live;}
  /** The offer button: on to the next chapter. */
  next(){const c=this.chapter;if(c<4)this.goto((c+1) as Chapter);}
  private set(b:Beat){if(b!==this.beat){this.beat=b;this.since=0;}}

@@ -14,6 +14,7 @@ else if(location.pathname==='/machine')await import('./machine/app');
 else if(location.pathname==='/drivetrain')await import('./drivetrain/app');
 else if(location.pathname==='/organ')await import('./organ/app');
 else if(location.pathname==='/grasp')await import('./grasp/app');
+else if(location.pathname==='/follow')await import('./follow/app');
 else if(location.pathname==='/mechanism/box')await import('./mechanism/app');
 else if(location.pathname==='/mechanism')await import('./stand/app');
 else if(location.pathname==='/phone/lab'||location.pathname.startsWith('/lab'))await import('./lab');

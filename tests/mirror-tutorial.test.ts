@@ -2,7 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {gestureGuide} from '../src/atp/content';
 import type {GestureEvent,GestureFrame,HandPose,TrackedHand} from '../src/atp/contracts';
-import {Tutorial,markTutorialSeen,tutorialCore,tutorialSeen,type TutorialPose,type TutorialStep,type TutorialView} from '../src/mirror/tutorial';
+import {readFileSync} from 'node:fs';
+import {mirrorGestures} from '../src/mirror/guide';
+import {Tutorial,markTutorialSeen,tutorialSeen,type TutorialPose,type TutorialStep,type TutorialView} from '../src/mirror/tutorial';
 
 const frame=(at:number,poses:HandPose[]=[],events:GestureEvent[]=[]):GestureFrame=>({at,events,hands:poses.map((pose,id)=>({id,pose}) as TrackedHand)});
 const clap:GestureEvent={type:'clap',x:.5,y:.5};
@@ -17,6 +19,7 @@ test('the full guide runs in order, one step at a time',()=>{
   const v:TutorialView=step.pose==='clap'?t.update(frame(at+50,[],[clap]),at+50):run(t,poseFor(step.pose),at+50,at+650);
   assert.equal(v.justCompleted,true,step.id);at+=700;
   if(i<10)assert.equal(v.index,i+1);
+  if(i===2){assert.deepEqual([v.checkpoint,v.step],[true,null]);t.more();at+=100;t.update(frame(at),at);at+=100;}
  }
  const end=t.update(frame(at),at);assert.deepEqual([end.done,end.index,end.step,end.progress,end.justCompleted],[true,11,null,1,false]);
 });
@@ -112,13 +115,77 @@ test('storage that throws reads as unseen and never escapes',()=>{
  assert.equal(tutorialSeen(storage),false);assert.doesNotThrow(()=>markTutorialSeen(storage));
 });
 
-test('first use teaches three core gestures with the object labels and preserves the full guide',()=>{
- const guide=gestureGuide.map(step=>({...step,label:`Object ${step.label}`})),original=structuredClone(guide);
- const core=tutorialCore(guide);
- assert.deepEqual(core.map(s=>s.id),['fist','open','pinch']);
- assert.deepEqual(core.map(s=>s.label),['Object Hold','Object Part','Object Pluck']);
- assert.deepEqual(guide,original);assert.equal(guide.length,11);
- assert.deepEqual(tutorialCore(guide,true),[],'native calibration and guided chapters do not teach generic controls');
+const objects=['atp','perfume','machine','organ','drivetrain','grasp'] as const;
+const declared=(id:string)=>{const source=readFileSync(new URL(`../src/${id}/object.ts`,import.meta.url),'utf8');return [...source.match(/^ use:\[(.*?)\],$/m)![1].matchAll(/'([^']+)'/g)].map(m=>m[1]);};
+const expected:Record<string,string[]>={
+ atp:['fist','open','pinch','point','victory','thumbUp','thumbDown','love','both-pinch','both-fist','clap'],
+ perfume:['fist','open','pinch','point','victory','thumbUp','thumbDown','love','both-pinch','both-fist','clap'],
+ machine:['fist','open','pinch','point','victory','thumbUp','thumbDown','love','both-pinch','both-fist','clap'],
+ drivetrain:['fist','open','pinch','point','victory','thumbUp','thumbDown','love','both-pinch','both-fist','clap'],
+ organ:['pinch','open','fist','thumbDown','both-pinch','point'],
+ grasp:['fist','open','pinch','point','victory','thumbUp','thumbDown','love','both-fist','clap'],
+};
+test('every page declares the gestures it uses, and the guide and tutorial show exactly those in that order',()=>{
+ const all=mirrorGestures().map(g=>g.id);assert.equal(all.length,11);
+ for(const id of objects){
+  const use=declared(id);assert.deepEqual(use,expected[id],id);assert.equal(new Set(use).size,use.length,`${id} lists a gesture once`);
+  for(const g of use)assert.ok(all.includes(g as never),`${id}: ${g}`);
+  const guide=mirrorGestures({},use as never);assert.deepEqual(guide.map(g=>g.id),use);
+  const t=new Tutorial(guide);assert.equal(t.current.total,use.length,id);assert.equal(t.current.step?.id,use[0]);
+ }
+ assert.deepEqual(mirrorGestures().map(g=>g.id),expected.atp,'the unfiltered guide is ATP\'s eleven');
+ assert.ok(declared('organ').length>0&&declared('grasp').length>0,'organ and grasp now have tutorial steps');
+});
+test('labels apply to the declared gestures only',()=>{
+ const guide=mirrorGestures({pinch:'Pick up',victory:'Unused'},['pinch','fist']);
+ assert.deepEqual(guide.map(g=>[g.id,g.label]),[['pinch','Pick up'],['fist','Hold']]);
+});
+const teach=(t:Tutorial,pose:TutorialPose,at:number)=>pose==='clap'?t.update(frame(at,[],[clap]),at):run(t,poseFor(pose),at,at+700);
+test('the basics are the first three steps, then a Basics done checkpoint before the rest',()=>{
+ const t=new Tutorial(steps('pinch','open','fist','thumbDown','point'));let at=0;
+ for(const [i,pose] of (['pinch','open','fist'] as const).entries()){
+  const before=t.update(frame(at),at);assert.deepEqual([before.index,before.step?.pose,before.checkpoint,before.total],[i,pose,false,5]);
+  const v=teach(t,pose,at+50);assert.equal(v.justCompleted,true);at+=1000;t.update(frame(at),at);
+ }
+ const gate=t.update(frame(at+100),at+100);
+ assert.deepEqual([gate.checkpoint,gate.step,gate.index,gate.done,gate.hint,gate.needsRelease],[true,null,3,false,false,false]);
+ assert.deepEqual([t.update(frame(at+60000,['thumbDown']),at+60000).checkpoint,t.update(frame(at+61000,['thumbDown']),at+61000).index],[true,3],'the checkpoint waits, poses do nothing, no hint');
+ const more=t.more();assert.deepEqual([more.checkpoint,more.index,more.step?.pose,more.needsRelease],[false,3,'thumbDown',true]);
+ assert.equal(t.more().step?.pose,'thumbDown','more outside the checkpoint changes nothing');
+});
+test('Finish at the checkpoint ends the tutorial; More gestures carries on to the end',()=>{
+ const make=()=>{const t=new Tutorial(steps('fist','open','pinch','point'));t.next();t.next();assert.equal(t.next().checkpoint,true);return t;};
+ const done=make().finish();assert.deepEqual([done.done,done.checkpoint,done.step,done.index],[true,false,null,4]);
+ const t=make();assert.equal(t.more().step?.pose,'point');
+ assert.equal(run(t,['pinch'],0,3000).index,3,'only the right pose passes');
+ const end=run(t,['point'],3100,3800);assert.deepEqual([end.done,end.checkpoint],[true,false]);
+ const same=new Tutorial(steps('fist','open','pinch'));same.next();same.next();assert.deepEqual([same.next().done,same.current.checkpoint],[true,false],'three steps or fewer have no checkpoint');
+});
+test('previous and next cross the checkpoint in both directions',()=>{
+ const t=new Tutorial(steps('fist','open','pinch','point','victory'));
+ t.next();t.next();
+ assert.deepEqual([t.next().checkpoint,t.current.index],[true,3]);
+ assert.deepEqual([t.next().step?.pose,t.current.checkpoint],['point',false]);
+ const back=t.previous();assert.deepEqual([back.checkpoint,back.index,back.step],[true,3,null]);
+ const step3=t.previous();assert.deepEqual([step3.checkpoint,step3.index,step3.step?.pose],[false,2,'pinch']);
+ assert.equal(t.next().checkpoint,true);t.next();t.next();
+ assert.deepEqual([t.current.step?.pose,t.next().done],['victory',true]);
+ const last=t.previous();assert.deepEqual([last.index,last.done,last.step?.pose],[4,false,'victory']);
+ t.previous();assert.equal(t.previous().checkpoint,true);assert.equal(t.previous().index,2);
+ t.previous();t.previous();assert.equal(t.previous().index,0);
+});
+test('a completed basics step raises the checkpoint, and restart goes back to step one',()=>{
+ const t=new Tutorial(steps('fist','open','pinch','point'));run(t,['fist'],0,700);run(t,['open'],800,1500);
+ assert.equal(run(t,['pinch'],1600,2300).checkpoint,true);
+ t.restart();const v=t.update(frame(5000),5000);assert.deepEqual([v.index,v.checkpoint,v.step?.pose,v.done],[0,false,'fist',false]);
+ t.skip();t.restart();assert.equal(t.current.checkpoint,false);
+});
+test('a held basics pose cannot pass the first extra step, and a clap carries across the checkpoint',()=>{
+ const t=new Tutorial(steps('fist','open','fist','fist'));run(t,['fist'],0,700);run(t,['open'],800,1500);run(t,['fist'],1600,2300);
+ t.more();assert.equal(run(t,['fist'],2400,6000).index,3,'still held from the third basic');
+ const c=new Tutorial(steps('fist','open','pinch','clap'));c.next();c.next();c.next();c.more();
+ assert.equal(c.update(frame(0,[],[clap]),0).done,false);assert.equal(c.update(frame(100,[],[clap]),100).done,false);
+ c.update(frame(200),200);assert.equal(c.update(frame(300,[],[clap]),300).done,true);
 });
 test('manual navigation covers every step without tracking, with bounded previous and next',()=>{
  const t=new Tutorial(steps('fist','open','pinch'));

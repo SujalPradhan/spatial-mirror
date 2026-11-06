@@ -6,7 +6,7 @@ import {silhouettes} from './flacon';
 
 /** position is the phone's pump setting, not the live stem, so a hand press never leaks into saved phase. 360 would wrap to 0 in the shell. */
 export class PerfumeEngine extends MirrorEngine<PerfumeSkin,PerfumeSceneExtra,PerfumeSound> {
- private mechanism:PerfumeBehaviour;
+ readonly mechanism:PerfumeBehaviour;
  constructor(world:PerfumeWorld){const mechanism=new PerfumeBehaviour(world);super(world,mechanism,silhouettes);this.mechanism=mechanism;}
  get pump(){return this.mechanism.pump;}
  get lastSpray(){return this.mechanism.lastSpray;}

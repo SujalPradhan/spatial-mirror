@@ -1,0 +1,6 @@
+export const followNote='A teacher hand performs a move one step at a time and waits for you. Your tracked hand is read as the same fifteen grasp joints, plus the tilt and roll of the wrist, and each joint that is off by more than a generous tolerance glows red. Hold a step for half a second and the teacher plays on to the next, so it always goes at your pace.';
+export const followHow='Show either hand: the teacher mirrors to match the one you show. Hands are the real input here, and no mouse can do this. The corner has Record, Repeat (or clap) and Skip. Record counts 3-2-1, captures up to ten seconds and splits your move into steps wherever you pause. Hand tracking runs in your browser and no video leaves the device. A paired phone sends only hand positions. Lessons are tools for practice, not medical advice.';
+export const sources=[
+ {label:'Postural hand synergies and the grasp joint model used here (Della Santina et al., 2017)',url:'https://www.frontiersin.org/journals/neurorobotics/articles/10.3389/fnbot.2017.00041/pdf'},
+ {label:'Sprague et al. (2025) · Evaluation of camera-based solutions for tracking hand kinematics, Sensors 25:5716',url:'https://www.ncbi.nlm.nih.gov/pmc/articles/PMC12473350/'},
+];

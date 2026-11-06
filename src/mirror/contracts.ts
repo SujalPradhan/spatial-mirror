@@ -12,6 +12,7 @@ export const clampPhase=(value:number):number=>Number.isFinite(value)?Math.max(0
 
 // ---- Gestures: gestures.ts turns tracker landmarks into these. ----
 export type HandPose='none'|'open'|'fist'|'pinch'|'point'|'victory'|'thumbUp'|'thumbDown'|'love';
+export type MirrorGestureId='fist'|'open'|'pinch'|'point'|'victory'|'thumbUp'|'thumbDown'|'love'|'both-pinch'|'both-fist'|'clap';
 export type HandSide='left'|'right'|'unknown';
 export interface MirrorPoint {x:number;y:number;z:number}
 /** All points are in mirror space: x is 0 at the viewer's left, as they see themselves on screen. */
@@ -123,6 +124,8 @@ export interface MirrorObject<State extends MirrorState=MirrorState,View extends
  motion:{run:string;reverse:string};
  /** Guide labels by gesture id. */
  gestures?:Partial<Record<string,string>>;
+ /** The gestures that do something here, most important first. The guide bar and the tutorial show only these, in this order. */
+ use:readonly MirrorGestureId[];
  copy:MirrorCopy;about:MirrorAbout;
  createView(host:HTMLElement):View;createEngine(world:View):Engine;
  state:{initial():State;validate(value:unknown):State};
@@ -136,4 +139,7 @@ export interface MirrorObject<State extends MirrorState=MirrorState,View extends
  recentered?(engine:Engine):void;
  /** Ask the tracker to carry each hand's raw landmarks (TrackedHand.shape), for an object driven by the hand's whole shape. */
  handShape?:boolean;
+ /** What a watch link needs beyond the shell state: named parts of the page's own discrete state, sent only when a part changes. Keep each part small and rounded. local keeps the viewer's engine reacting to the presenter's hands as well. */
+ watch?:MirrorWatch<Engine>;
 }
+export interface MirrorWatch<Engine=unknown> {capture(engine:Engine):Record<string,unknown>;apply(engine:Engine,page:Record<string,unknown>,fresh:boolean):void;local?:boolean}

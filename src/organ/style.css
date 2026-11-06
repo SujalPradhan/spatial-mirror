@@ -3,8 +3,8 @@
 .organ-page .mirror-mark{font:500 21px/1 var(--serif);letter-spacing:.02em;color:var(--ivory)}
 .organ-page .mirror-mark span{font-style:italic;font-weight:400;color:var(--gold-dim);margin-left:4px;font-size:15px}
 .organ-page .mirror-count output{font-family:var(--serif);font-weight:500;color:var(--gold)}
-/* The guided chapter is the tutorial: the shared eleven-gesture drill and bar stay out of the way. */
-.organ-page .mirror-gestures,.organ-page .mirror-tutorial,.organ-page #organ-tutorial-replay{display:none!important}
+/* The guided chapter has its own gesture line, so the shared bar stays out of the way. */
+.organ-page .mirror-gestures{display:none!important}
 .organ-page .mirror-about p{white-space:pre-line}
 .organ-hud{position:absolute;inset:0;z-index:3;pointer-events:none;overflow:hidden;font-size:11px;color:var(--ivory)}
 .organ-hud>*{position:absolute;left:0;top:0}
@@ -28,7 +28,7 @@
 .organ-line li button,.organ-palm button,.organ-chapters button{pointer-events:auto;padding:1px 7px;border:1px solid rgba(243,207,134,.35);border-radius:99px;background:rgba(243,207,134,.08);font-size:9px;letter-spacing:.04em;color:var(--ivory)}
 .organ-line li button:disabled,.organ-palm button:disabled{opacity:.35;cursor:default}
 @keyframes organ-in{from{opacity:0;transform:translateY(-6px)}}
-.organ-hud>.organ-chapters{left:auto;top:auto;right:18px;bottom:54px;display:flex;gap:3px;pointer-events:auto}
+.organ-hud>.organ-chapters{left:auto;top:auto;right:18px;bottom:86px;display:flex;gap:3px;pointer-events:auto}
 .organ-chapters button{padding:3px 9px;font-size:9.5px;background:rgba(14,10,8,.5);border-color:rgba(243,207,134,.18);color:var(--gold-dim)}
 .organ-chapters button[aria-current]{border-color:var(--gold);color:var(--ivory);background:rgba(243,207,134,.16)}
 /* Vials. */
@@ -137,3 +137,4 @@
 @keyframes organ-pop{from{scale:.86}}
 @media(max-width:1000px){.organ-hud>.organ-line{width:calc(100% - 40px);top:84px}.organ-line>b{font-size:19px}.organ-card{width:200px}}
 @media(prefers-reduced-motion:reduce){.organ-label li,.organ-ack,.organ-line>b{animation:none}.organ-puff span{animation-duration:.01s;animation-fill-mode:none;opacity:1}}
+@media(min-width:901px){.organ-page .mirror-tutorial{left:auto;right:16px;top:92px;transform:none}}

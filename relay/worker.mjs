@@ -3,6 +3,7 @@ import {createControlRoom} from '../control-room.mjs';
 const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const secret=()=>Array.from(crypto.getRandomValues(new Uint8Array(32)),n=>n.toString(16).padStart(2,'0')).join('');
 const code=()=>Array.from(crypto.getRandomValues(new Uint8Array(8)),n=>alphabet[n&31]).join('');
+const watchSecret=()=>Array.from(crypto.getRandomValues(new Uint8Array(12)),n=>alphabet[n&31]).join('');
 const json=(data,status=200)=>Response.json(data,{status,headers:{'Cache-Control':'no-store'}});
 const error=(message,status=400)=>json({error:message},status);
 const normalCode=value=>String(value).toUpperCase().replace(/[-\s]/g,'');
@@ -97,7 +98,11 @@ export class ControllerRoom {
   }
   if(url.pathname==='/stream'&&request.headers.get('Upgrade')==='websocket'){
    const role=url.searchParams.get('role'),token=url.searchParams.get('token');
-   if(!['desktop','phone'].includes(role)||token!==this.meta[role==='desktop'?'host':'phone']||role==='phone'&&!this.meta.paired)return this.closedSocket(4001,'Invalid connection');
+   if(role==='viewer'){
+    if(!this.meta.watch||token!==this.meta.watch)return this.closedSocket(4001,'Invalid connection');
+   }else if(!['desktop','phone','presenter'].includes(role)||token!==this.meta[role==='phone'?'phone':'host']||role==='phone'&&!this.meta.paired)return this.closedSocket(4001,'Invalid connection');
+   if(role==='presenter'&&!this.meta.watch){this.meta.watch=watchSecret();await this.state.storage.put('meta',this.meta);}
+   if(this.meta.watch)this.room.watchCode=this.meta.code+this.meta.watch;
    const [client,server]=Object.values(new WebSocketPair());server.accept();this.room.connect(server,role);
    return new Response(null,{status:101,webSocket:client});
   }

@@ -1,6 +1,6 @@
-import type {HandPose} from './contracts';
+import type {HandPose,MirrorGestureId} from './contracts';
 
-export interface MirrorGesture {id:string;pose:HandPose|'both-pinch'|'both-fist'|'clap';glyph:string;label:string}
+export interface MirrorGesture {id:MirrorGestureId;pose:HandPose|'both-pinch'|'both-fist'|'clap';glyph:string;label:string}
 const gestures:MirrorGesture[]=[
  {id:'fist',pose:'fist',glyph:'✊',label:'Hold'},
  {id:'open',pose:'open',glyph:'🖐',label:'Part'},
@@ -14,4 +14,4 @@ const gestures:MirrorGesture[]=[
  {id:'both-fist',pose:'both-fist',glyph:'✊✊',label:'Scale'},
  {id:'clap',pose:'clap',glyph:'👐',label:'Shock'},
 ];
-export const mirrorGestures=(labels:Partial<Record<string,string>>={}):MirrorGesture[]=>gestures.map(g=>({...g,label:labels[g.id]??g.label}));
+export const mirrorGestures=(labels:Partial<Record<string,string>>={},use?:readonly MirrorGestureId[]):MirrorGesture[]=>(use?use.map(id=>gestures.find(g=>g.id===id)!):gestures).map(g=>({...g,label:labels[g.id]??g.label}));

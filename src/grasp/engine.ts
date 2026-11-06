@@ -37,7 +37,7 @@ export class GraspEngine implements MirrorDriver<GraspOutput> {
  private heldFor=0;private lift=0;private wasHeld=false;private contactKey='';
  private clock=0;private lastFrame=NaN;private handId:number|null=null;private lastHandAt=-Infinity;private source:GraspScene['source']='rest';
  preset:string|null=null;
- private taxonomy:Partial<Record<GraspKind,TaxonomyEntry>>={};private best:Partial<Record<GraspId,number>>={};private foundFor=0;
+ taxonomy:Partial<Record<GraspKind,TaxonomyEntry>>={};best:Partial<Record<GraspId,number>>={};private foundFor=0;
  private window:number[][]=[];private sampleAt=0;private explainedCache:Record<MotorCount,number>={1:1,2:1,3:1,5:1};
  private charge:{hand:number;gesture:'thumbDown'|'love';since:number;fired:boolean}|null=null;
  private zoomGrip:{distance:number;zoom:number}|null=null;

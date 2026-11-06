@@ -12,9 +12,14 @@ import {validTrackingFrame} from '../../tracking-protocol.mjs';
 import {MIRROR_ZOOM_MAX as ZOOM_MAX,MIRROR_ZOOM_MIN as ZOOM_MIN,clampPhase,type GestureFrame,type MirrorDriver,type MirrorInputSource,type MirrorInputTarget,type MirrorObject,type MirrorState,type MirrorView} from './contracts';
 import {mirrorGestures} from './guide';
 import {GestureTracker} from './gestures';
+import {InkMode,inkSuppressed} from './ink-mode';
+import {mirrorToStage} from './projection';
+import {WatchPresenter,type Stage} from './watch';
+import {forgetRoom,presenterUrl} from './watch-link';
+import {runWatchView} from './watch-view';
 import {MirrorPhoneInput} from './input';
 import {mountMirrorPage} from './page';
-import {Tutorial,markTutorialSeen,tutorialCore,tutorialSeen,type TutorialStep,type TutorialView} from './tutorial';
+import {Tutorial,markTutorialSeen,tutorialSeen,type TutorialStep,type TutorialView} from './tutorial';
 const $=<T extends HTMLElement=HTMLElement>(id:string)=>document.querySelector<T>(id)!;
 const clamp=(n:number,min:number,max:number)=>Math.max(min,Math.min(max,n));
 
@@ -22,18 +27,21 @@ const clamp=(n:number,min:number,max:number)=>Math.max(min,Math.min(max,n));
 export async function runMirror<State extends MirrorState,View extends MirrorView,Engine extends MirrorDriver>(object:MirrorObject<State,View,Engine>){
 const {id}=object,part=<T extends HTMLElement=HTMLElement>(name:string)=>$<T>(`#${id}-${name}`);
 document.title=object.title;
-const gestures=mirrorGestures({thumbUp:object.motion.run,thumbDown:object.motion.reverse,...object.gestures});
+const gestures=mirrorGestures({thumbUp:object.motion.run,thumbDown:object.motion.reverse,...object.gestures},object.use);
 mountMirrorPage($('#app'),{id,copy:object.copy,about:object.about,gestures});
 const tutorialBox=part('tutorial'),tutorialText=tutorialBox.querySelector('p')!;
-const tutorialSteps=tutorialCore(gestures,!!object.handShape||id==='organ');
-const tutorialPrevious=part<HTMLButtonElement>('tutorial-previous'),tutorialNext=part<HTMLButtonElement>('tutorial-next');
+const tutorialPrevious=part<HTMLButtonElement>('tutorial-previous'),tutorialNext=part<HTMLButtonElement>('tutorial-next'),tutorialSkip=part<HTMLButtonElement>('tutorial-skip');
 let tutorial:Tutorial|null=null,tutorialClap=false,tutorialDoneAt=0,tutorialView:TutorialView|null=null;
 let state:MirrorState=object.state.initial(),client:ControlClient|null=null,owns=false,playing=false,context=0,ready=false,muted=false;
 let drag:{id:number;x:number;y:number;view:MirrorState['view'];pluck:boolean}|null=null,lastFine=-Infinity,lastPublish=0,lastDescriptor='',spoken='';
 let owner:MirrorInputSource|null=null,before:MirrorState|null=null,history:MirrorState[]=[];
 const empty=():GestureFrame=>({at:0,hands:[],events:[]});
 const viewport=part('viewport'),view=object.createView(viewport),engine=object.createEngine(view),audio=object.createAudio(),tracker=new GestureTracker({shape:!!object.handShape});
-let frame=empty(),lastHands=-Infinity,shockAt=-Infinity;
+if(new URLSearchParams(location.search).has('watch'))return runWatchView(object,{code:new URLSearchParams(location.search).get('watch')!,part,view,engine,audio}) as never;
+let frame=empty(),lastHands=-Infinity,shockAt=-Infinity,inkOn=false,videoAspect=0;
+const inkMode=new InkMode(part('stage'));
+const stageOf:Stage=p=>mirrorToStage(p.x,p.y,videoAspect,part('stage').clientWidth/(part('stage').clientHeight||1));
+function setAspect(aspect:number){videoAspect=aspect;view.setVideoAspect(aspect);}
 // Pose and clap events last one tracker update; one not yet drawn is carried into the next, so a fast camera cannot drop a 🤟 or a clap.
 let drawn=true;
 function carry(next:GestureFrame){if(!drawn)next.events=[...frame.events,...next.events].slice(-20);drawn=false;return next;}
@@ -45,7 +53,7 @@ function publish(){client?.send({type:'state',...descriptor()});lastDescriptor=J
 function remember(old:MirrorState){if(JSON.stringify(old)!==JSON.stringify(state)){history.push(old);if(history.length>25)history.shift();}}
 function finish(source:MirrorInputSource|null){if(!source||owner!==source)return;if(before)remember(before);before=null;owner=null;}
 // The laptop may lose focus while someone reaches for the phone, so phone-camera hands only need a visible tab.
-function begin(source:MirrorInputSource){if(!owns||state.frozen||document.hidden||!document.hasFocus()&&!(source==='hand'&&phoneCamera)||!ready)return false;if(owner&&owner!==source)return false;if(!owner){playing=false;owner=source;before=structuredClone(state);}return true;}
+function begin(source:MirrorInputSource){if(inkOn&&source!=='phone'||!owns||state.frozen||document.hidden||!document.hasFocus()&&!(source==='hand'&&phoneCamera)||!ready)return false;if(owner&&owner!==source)return false;if(!owner){playing=false;owner=source;before=structuredClone(state);}return true;}
 const target:MirrorInputTarget={state:()=>state,begin,view:q=>{state.view.q=q;},phase:n=>{state.phase=clampPhase(n);engine.seek(state.phase);},end:finish};
 const phone=new MirrorPhoneInput(target);
 function release(){phone.release();finish(owner);drag=null;engine.pointerUp();}
@@ -59,7 +67,7 @@ function phoneHands(f:TrackingFrame){
  const now=client?.serverTime()??null;if(now===null||f.frameAt===null||Math.abs(now-f.frameAt)>400)return;
  if(phoneCapture!==f.captureId){tracker.reset();phoneCapture=f.captureId;phoneSequence=0;}if(f.frameId<=phoneSequence)return;phoneSequence=f.frameId;phoneFrames++;
  // No phone video is shown here, so the whole phone picture maps onto the whole stage.
- if(!phoneCamera){phoneCamera=true;view.setVideoAspect(0);notice('Phone camera is live.');firstTutorial();}
+ if(!phoneCamera){phoneCamera=true;setAspect(0);notice('Phone camera is live.');firstTutorial();}
  hands(f.hands,performance.now(),[],[],f.width/f.height);
 }
 function receive(p:Packet){
@@ -102,17 +110,51 @@ window.addEventListener('studio-pair-status',e=>{part('phone').textContent=(e as
 part('recenter').onclick=recenter;part('freeze').onclick=()=>freeze(false);
 part('sound').onclick=()=>{muted=!muted;audio.setMuted(muted);part('sound').setAttribute('aria-pressed',String(!muted));void audio.start();};
 part('sources').onclick=()=>{part<HTMLDialogElement>('about').showModal();release();playing=false;};part('about-close').onclick=()=>part<HTMLDialogElement>('about').close();
-viewport.onpointerdown=e=>{if(e.button!==0)return;void audio.start();if(!owns||state.frozen||!ready)return;const pluck=engine.pointerDown(view.pointToWorld(e.clientX,e.clientY));if(!pluck&&!begin('mouse'))return;viewport.setPointerCapture(e.pointerId);drag={id:e.pointerId,x:e.clientX,y:e.clientY,view:structuredClone(state.view),pluck};};
-viewport.onpointermove=e=>{if(!drag){engine.hover(ready?view.pointToWorld(e.clientX,e.clientY):null);return;}if(drag.id!==e.pointerId)return;if(drag.pluck){engine.pointerMove(view.pointToWorld(e.clientX,e.clientY));return;}const dx=e.clientX-drag.x,dy=e.clientY-drag.y;state.view.q=new Quaternion().setFromEuler(new Euler(dy*.006,dx*.006,0,'YXZ')).multiply(new Quaternion().fromArray(drag.view.q)).normalize().toArray() as Quat;};
+viewport.onpointerdown=e=>{if(e.button!==0)return;void audio.start();if(inkOn){inkMode.pointerDown(e,viewport,performance.now());return;}if(!owns||state.frozen||!ready)return;const pluck=engine.pointerDown(view.pointToWorld(e.clientX,e.clientY));if(!pluck&&!begin('mouse'))return;viewport.setPointerCapture(e.pointerId);drag={id:e.pointerId,x:e.clientX,y:e.clientY,view:structuredClone(state.view),pluck};};
+viewport.onpointermove=e=>{if(inkOn){inkMode.pointerMove(e);return;}if(!drag){engine.hover(ready?view.pointToWorld(e.clientX,e.clientY):null);return;}if(drag.id!==e.pointerId)return;if(drag.pluck){engine.pointerMove(view.pointToWorld(e.clientX,e.clientY));return;}const dx=e.clientX-drag.x,dy=e.clientY-drag.y;state.view.q=new Quaternion().setFromEuler(new Euler(dy*.006,dx*.006,0,'YXZ')).multiply(new Quaternion().fromArray(drag.view.q)).normalize().toArray() as Quat;};
 viewport.onpointerleave=()=>{if(!drag)engine.hover(null);};
-function endDrag(e:PointerEvent){if(!drag||drag.id!==e.pointerId)return;if(drag.pluck)engine.pointerUp();else finish('mouse');drag=null;if(viewport.hasPointerCapture(e.pointerId))viewport.releasePointerCapture(e.pointerId);}
-viewport.onpointerup=endDrag;viewport.onpointercancel=endDrag;viewport.onlostpointercapture=e=>{if(drag?.id===e.pointerId){if(drag.pluck)engine.pointerUp();else finish('mouse');drag=null;}};
+function endDrag(e:PointerEvent){if(inkMode.pointerUp(e,performance.now())){if(viewport.hasPointerCapture(e.pointerId))viewport.releasePointerCapture(e.pointerId);return;}if(!drag||drag.id!==e.pointerId)return;if(drag.pluck)engine.pointerUp();else finish('mouse');drag=null;if(viewport.hasPointerCapture(e.pointerId))viewport.releasePointerCapture(e.pointerId);}
+viewport.onpointerup=endDrag;viewport.onpointercancel=endDrag;viewport.onlostpointercapture=e=>{inkMode.pointerUp(e,performance.now());if(drag?.id===e.pointerId){if(drag.pluck)engine.pointerUp();else finish('mouse');drag=null;}};
 viewport.addEventListener('wheel',e=>{e.preventDefault();change(()=>{state.view.zoom=clamp(state.view.zoom*Math.exp(-e.deltaY*.001),ZOOM_MIN,ZOOM_MAX);});},{passive:false});
 viewport.onkeydown=e=>{if(e.key===' '&&!state.frozen){e.preventDefault();void audio.start();engine.kick(e.shiftKey?-1:1);}if(e.key==='Escape')release();if(e.key==='Home')recenter();};
+const inkButton=part<HTMLButtonElement>('ink'),keepButton=part<HTMLButtonElement>('ink-keep'),gestureBar=part('gestures');
+let barMarkup='';
+function setInk(on:boolean){
+ if(on===inkOn)return;release();playing=false;inkOn=on;const now=performance.now();
+ inkMode.set(on,now);part('stage').classList.toggle('is-inking',on);inkButton.setAttribute('aria-pressed',String(on));keepButton.hidden=!on;keepButton.setAttribute('aria-pressed','false');
+ if(on){barMarkup=gestureBar.innerHTML;gestureBar.innerHTML=mirrorGestures({pinch:'Draw',thumbDown:'Undo'},['pinch','thumbDown']).map(g=>`<li data-gesture="${g.id}"><i aria-hidden="true">${g.glyph}</i>${g.label}</li>`).join('');}
+ else gestureBar.innerHTML=barMarkup;
+}
+inkButton.onclick=()=>setInk(!inkOn);
+keepButton.onclick=()=>{const keep=!inkMode.board.keep;inkMode.setKeep(keep,performance.now());keepButton.setAttribute('aria-pressed',String(keep));};
+document.addEventListener('keydown',e=>{
+ if(e.key.toLowerCase()!=='i'||e.repeat||e.altKey||e.ctrlKey||e.metaKey||e.defaultPrevented||document.querySelector('dialog[open]'))return;
+ if(e.target instanceof Element&&e.target.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"]),[role="textbox"]'))return;
+ setInk(!inkOn);
+});
+let presenter:WatchPresenter|null=null;
+const shareButton=document.querySelector<HTMLButtonElement>(`#${id}-share`);
+if(shareButton){
+ const dialog=document.createElement('dialog');dialog.id=`${id}-share-dialog`;dialog.className='mirror-about mirror-share';
+ dialog.innerHTML=`<h2>Share view</h2><p>Anyone with this link can watch this page live. They see what you see and cannot change anything.</p><input id="${id}-share-link" readonly aria-label="Watch link" value="Creating link…"><div class="mirror-share-row"><button id="${id}-share-copy" disabled>Copy</button><output id="${id}-share-count" aria-live="polite">0 watching</output></div><p id="${id}-share-error" class="mirror-share-error" role="alert" hidden></p><div class="mirror-share-row"><button id="${id}-share-stop">Stop sharing</button><button id="${id}-share-close">Back</button></div>`;
+ $('#app main').append(dialog);
+ const link=part<HTMLInputElement>('share-link'),copy=part<HTMLButtonElement>('share-copy'),count=part('share-count'),problem=part('share-error');
+ const watchUrl=(code:string)=>`${location.origin}${location.pathname}?watch=${code}`;
+ const refresh=()=>{
+  const p=presenter;link.value=p?.code?watchUrl(p.code):p?.error?'':'Creating link…';copy.disabled=!p?.code;
+  count.textContent=`${p?.viewers??0} watching`;problem.hidden=!p?.error;problem.textContent=p?.error??'';
+  shareButton.textContent=p?.open?'Sharing':'Share view';shareButton.setAttribute('aria-pressed',String(!!p?.open));
+ };
+ const sample=()=>({state,pos:((engine.position%360)+360)%360,speed:engine.speed,playing,hands:frame.hands,stage:stageOf,inkOn,keep:inkMode.board.keep,strokes:inkMode.board.strokes,page:object.watch?.capture(engine)??{}});
+ shareButton.onclick=()=>{void audio.start();if(!presenter){presenter=new WatchPresenter(()=>presenterUrl(session.token),sample,refresh,forgetRoom);void presenter.start();}else if(presenter.error&&!presenter.open)void presenter.start();refresh();dialog.showModal();};
+ copy.onclick=async()=>{try{await navigator.clipboard.writeText(link.value);}catch{link.select();document.execCommand('copy');}copy.textContent='Copied';setTimeout(()=>{copy.textContent='Copy';},1500);};
+ part('share-stop').onclick=()=>{presenter?.stop();presenter=null;refresh();dialog.close();};part('share-close').onclick=()=>dialog.close();
+ window.addEventListener('pagehide',()=>presenter?.stop());
+}
 let stream:MediaStream|null=null,probe:HandProbe|null=null,cameraStarting=false,cameraGeneration=0;
 const video=part<HTMLVideoElement>('video');
 function stopCamera(){endTutorial();cameraGeneration++;cameraStarting=false;probe?.stop();probe=null;stream?.getTracks().forEach(t=>t.stop());stream=null;video.srcObject=null;tracker.reset();frame=empty();part('stage').classList.remove('is-live');part('camera').textContent='Step into the mirror';part('camera').removeAttribute('aria-pressed');}
-function hands(raw:Landmark[][],at:number,world:Landmark[][],handedness:(string|null)[]=[],aspect=video.videoWidth/video.videoHeight||16/9){if(raw.length)lastHands=performance.now();frame=carry(tracker.update(raw,at,world,handedness,aspect));if(frame.events.some(e=>e.type==='clap')){shockAt=performance.now();tutorialClap=true;}}
+function hands(raw:Landmark[][],at:number,world:Landmark[][],handedness:(string|null)[]=[],aspect=video.videoWidth/video.videoHeight||16/9){if(raw.length)lastHands=performance.now();const next=tracker.update(raw,at,world,handedness,aspect);presenter?.queue(next.events,stageOf);frame=carry(next);if(frame.events.some(e=>e.type==='clap')){shockAt=performance.now();tutorialClap=true;}}
 async function startCamera(){
  if(stream||cameraStarting){stopCamera();return;}
  const generation=++cameraGeneration;cameraStarting=true;void audio.start();part('camera').textContent='Opening camera…';
@@ -120,7 +162,7 @@ async function startCamera(){
   const next=await navigator.mediaDevices.getUserMedia({video:{width:{ideal:1280},height:{ideal:720}},audio:false});
   if(generation!==cameraGeneration){next.getTracks().forEach(t=>t.stop());return;}
   stream=next;video.srcObject=next;await video.play();if(generation!==cameraGeneration)return;
-  endPhoneCamera();view.setVideoAspect(video.videoWidth/video.videoHeight);
+  endPhoneCamera();setAspect(video.videoWidth/video.videoHeight);
   // The skeleton is drawn in the object's own mirrored space, so the probe's raw overlay stays hidden.
   probe=new HandProbe(video,part<HTMLCanvasElement>('hand-overlay'),(data,message)=>{if(data.status==='error'){notice(message);stopCamera();}},(raw,at,world,meta)=>{if(owns&&!document.hidden&&document.hasFocus())hands(raw,at,world,meta?.handedness);else{tracker.reset();frame=empty();}},{preferGPU:true});
   probe.start();firstTutorial();part('stage').classList.add('is-live');part('camera').textContent='Leave the mirror';part('camera').setAttribute('aria-pressed','true');
@@ -130,7 +172,7 @@ async function startCamera(){
 part('camera').onclick=()=>void startCamera();
 const seenStore={getItem:(k:string)=>localStorage.getItem(k),setItem:(k:string,v:string)=>localStorage.setItem(k,v)};
 const tutorialHint=(step:TutorialStep)=>step.pose==='clap'?'Start with your hands apart, then bring them together.':step.id.startsWith('both')?'Show both hands to the camera.':'Hold your hand still, palm to the camera.';
-function startTutorial(){if(!tutorialSteps.length)return;tutorial=new Tutorial(tutorialSteps);tutorialClap=false;tutorialDoneAt=0;tutorialBox.hidden=false;renderTutorial(tutorial.current,performance.now());}
+function startTutorial(){if(!gestures.length)return;tutorial=new Tutorial(gestures);tutorialClap=false;tutorialDoneAt=0;tutorialBox.hidden=false;renderTutorial(tutorial.current,performance.now());}
 function firstTutorial(){if(!tutorial&&!tutorialSeen(seenStore))startTutorial();}
 function endTutorial(){tutorial=null;tutorialView=null;tutorialClap=false;tutorialDoneAt=0;tutorialBox.hidden=true;}
 function drawTutorial(now:number){
@@ -142,10 +184,13 @@ function drawTutorial(now:number){
 function renderTutorial(v:TutorialView,now:number){
  tutorialView=v;
  tutorialPrevious.disabled=v.index===0;tutorialNext.disabled=v.done;
- tutorialNext.textContent=v.done?'Finished':v.index===v.total-1?'Finish':'Next';tutorialNext.setAttribute('aria-label',v.done?'Tutorial finished':v.index===v.total-1?'Finish tutorial':'Next tutorial step');
- if(v.done){if(!tutorialDoneAt){tutorialDoneAt=now;markTutorialSeen(seenStore);tutorialBox.querySelector('i')!.textContent='✓';tutorialText.querySelector('b')!.textContent='Three gestures to start';tutorialText.querySelector('small')!.textContent='More gestures remain in the guide.';tutorialBox.querySelector<HTMLElement>('.mirror-tutorial-bar span')!.style.width='100%';}else if(now-tutorialDoneAt>1800)endTutorial();return;}
- tutorialBox.querySelector('i')!.textContent=v.step!.glyph;tutorialText.querySelector('b')!.textContent=v.step!.label;tutorialText.querySelector('small')!.textContent=`${v.index+1} of ${v.total} · ${v.needsRelease?'Release the pose, then hold again or use the buttons':v.hint?tutorialHint(v.step!):'Hold the pose or use the buttons'}`;
- tutorialBox.querySelector<HTMLElement>('.mirror-tutorial-bar span')!.style.width=`${v.progress*100}%`;
+ const last=v.index===v.total-1;
+ tutorialNext.textContent=v.done?'Finished':v.checkpoint?'More gestures':last?'Finish':'Next';tutorialNext.setAttribute('aria-label',v.done?'Tutorial finished':v.checkpoint?'More gestures':last?'Finish tutorial':'Next tutorial step');
+ tutorialSkip.textContent=v.checkpoint?'Finish':'Skip';tutorialSkip.setAttribute('aria-label',v.checkpoint?'Finish tutorial':'Skip tutorial');
+ const note=(glyph:string,title:string,detail:string,progress:number)=>{tutorialBox.querySelector('i')!.textContent=glyph;tutorialText.querySelector('b')!.textContent=title;tutorialText.querySelector('small')!.textContent=detail;tutorialBox.querySelector<HTMLElement>('.mirror-tutorial-bar span')!.style.width=`${progress*100}%`;};
+ if(v.done){if(!tutorialDoneAt){tutorialDoneAt=now;markTutorialSeen(seenStore);note('✓','Tutorial done','Replay it any time from Tutorial.',1);}else if(now-tutorialDoneAt>1800)endTutorial();return;}
+ if(v.checkpoint){note('✓','Basics done',`${v.index} of ${v.total} gestures. ${v.total-v.index} more to try.`,v.index/v.total);return;}
+ note(v.step!.glyph,v.step!.label,`${v.index+1} of ${v.total} · ${v.needsRelease?'Release the pose, then hold again or use the buttons':v.hint?tutorialHint(v.step!):'Hold the pose or use the buttons'}`,v.progress);
 }
 function navigateTutorial(direction:-1|1){
  if(!tutorial||direction<0&&tutorialView?.index===0||direction>0&&tutorialView?.done)return;
@@ -176,12 +221,12 @@ function tick(now:number){
  if(ready){
   // Idle motion stops whenever the object says so or the viewer asked for less.
   engine.idle=!!object.idles?.(state as State)&&!stillMotion.matches;
-  const out=engine.step(frame,dt,state.view,state.frozen);drawn=true;
+  const out=engine.step(inkOn?inkSuppressed(frame):frame,dt,state.view,state.frozen);drawn=true;inkMode.update(frame,videoAspect,now);inkMode.render(now);
   if(out.holding){if(out.view&&begin('hand'))Object.assign(state.view,out.view);}else finish('hand');
   for(const sound of out.sounds)audio.play(sound);
   if(object.readout&&object.copy.readoutUnit){const value=object.readout(out as ReturnType<Engine['step']>);if(value!==lastReadout)part('count').textContent=String(lastReadout=value);}
   if(!engine.idle&&Math.abs(engine.speed)<.01&&!owner)state.phase=angle();
-  view.setPose(state.view);view.draw(out.scene,now);lightGuide();drawTutorial(now);
+  view.setPose(state.view);view.draw(out.scene,now);lightGuide();if(!inkOn)drawTutorial(now);
  }
  if(now-lastPublish>100&&lastDescriptor!==JSON.stringify(descriptor()))publish();
  requestAnimationFrame(tick);
@@ -189,5 +234,5 @@ function tick(now:number){
 requestAnimationFrame(tick);
 function interrupt(){release();playing=false;publish();}
 window.addEventListener('blur',interrupt);document.addEventListener('visibilitychange',()=>{if(document.hidden){interrupt();stopCamera();}});document.addEventListener('studio-before-navigation',()=>{interrupt();stopCamera();});window.addEventListener('pagehide',()=>{stopped=true;stopCamera();release();client?.close();binding.close();audio.stop();view.dispose();});
-return {engine,get tutorial(){return tutorialView;},get state(){return structuredClone(state) as State;},get playing(){return playing;},get ready(){return ready;},get owns(){return owns;},get phoneHeld(){return phone.held;},get owner(){return owner;},get context(){return context;},get frame(){return frame;},get phoneFrames(){return phoneFrames;},get phoneCamera(){return phoneCamera;},hands(raw:Landmark[][],world:Landmark[][]=[],handedness:(string|null)[]=[]){hands(raw,performance.now(),world,handedness);}};
+return {engine,get tutorial(){return tutorialView;},get state(){return structuredClone(state) as State;},get playing(){return playing;},get ready(){return ready;},get owns(){return owns;},get phoneHeld(){return phone.held;},get owner(){return owner;},get context(){return context;},get frame(){return frame;},get ink(){return inkMode;},get sharing(){return presenter;},get phoneFrames(){return phoneFrames;},get phoneCamera(){return phoneCamera;},hands(raw:Landmark[][],world:Landmark[][]=[],handedness:(string|null)[]=[]){hands(raw,performance.now(),world,handedness);}};
 }

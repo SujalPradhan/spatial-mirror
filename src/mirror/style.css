@@ -32,7 +32,9 @@
 .mirror-gestures .is-on{background:rgba(var(--mirror-accent-rgb),.2);color:var(--mirror-ink)}
 .mirror-gestures .is-on i{filter:none}
 .mirror-status{position:absolute;z-index:3;left:50%;bottom:84px;transform:translateX(-50%);margin:0;pointer-events:none;max-width:60%;text-align:center;font-size:11px;color:var(--mirror-dim)}
-.mirror-corner{position:absolute;z-index:4;right:18px;bottom:20px;display:flex;gap:2px}
+.mirror-corner{position:absolute;z-index:4;right:18px;bottom:20px;display:flex;flex-direction:column;align-items:flex-end;gap:2px}
+.mirror-tools,.mirror-basics{display:flex;gap:2px}
+.mirror-tools:not(:has(button:not([hidden]))){display:none}
 .mirror-corner button{padding:6px 9px;border:0;border-radius:5px;background:none;font-size:10px;color:var(--mirror-dim)}
 .mirror-corner button:hover{background:rgba(255,255,255,.1);color:var(--mirror-ink)}
 .mirror-sound[aria-pressed=false]{text-decoration:line-through}
@@ -65,3 +67,19 @@
 .mirror-tutorial-nav{grid-column:1/-1;display:flex;justify-content:flex-end;gap:2px}
 .mirror-tutorial-nav button:disabled{opacity:.35;cursor:default}
 .mirror-tutorial-nav button:disabled:hover{background:none;color:var(--mirror-dim)}
+.mirror-ink{position:absolute;inset:0;z-index:3;width:100%;height:100%;pointer-events:none}
+.mirror-stage.is-inking .mirror-viewport{cursor:crosshair}
+.mirror-page .mirror-stage.is-inking .mirror-gestures{display:flex!important}
+.mirror-corner button[aria-pressed=true]:not(.mirror-sound){background:rgba(255,255,255,.12);color:var(--mirror-ink)}
+.mirror-page .mirror-share input{width:100%;box-sizing:border-box;margin:4px 0 0;padding:9px 10px;border:1px solid rgba(255,255,255,.18);border-radius:5px;background:rgba(255,255,255,.05);color:var(--mirror-ink);font:12px ui-monospace,monospace}
+.mirror-page .mirror-share .mirror-share-row{display:flex;gap:8px;align-items:center;margin-top:6px}
+.mirror-page .mirror-share .mirror-share-row button{margin-top:0}
+.mirror-page .mirror-share output{font-size:12px;color:var(--mirror-dim)}
+.mirror-page .mirror-share-error{color:#ff8f86}
+.mirror-watch{position:absolute;z-index:4;left:24px;bottom:20px;display:flex;align-items:center;gap:7px;margin:0;padding:6px 11px;border:1px solid rgba(255,255,255,.14);border-radius:99px;background:rgba(5,8,12,.6);backdrop-filter:blur(8px);font-size:11px;color:var(--mirror-ink)}
+.mirror-watch:before{content:'';width:7px;height:7px;border-radius:50%;background:#ff3b30}
+.mirror-watch.is-offline{color:var(--mirror-dim)}
+.mirror-watch.is-offline:before{background:#6b7785}
+.mirror-watching .mirror-stage{pointer-events:none}
+.mirror-watching .mirror-corner{pointer-events:auto}
+.mirror-watching .mirror-corner button:not(.mirror-sound):not([id$=-sources]),.mirror-watching .mirror-enter,.mirror-watching .mirror-gestures,.mirror-watching .mirror-tutorial{display:none!important}
