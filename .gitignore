@@ -7,3 +7,4 @@ reports/
 .env*.local
 .venv-tracking/
 __pycache__/
+dist-extension/

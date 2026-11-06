@@ -1,0 +1,15 @@
+{
+ "manifest_version": 3,
+ "name": "Spatial Mirror Ink",
+ "version": "0.1.0",
+ "description": "Draw in the air on your video call camera.",
+ "permissions": ["storage"],
+ "background": {"service_worker": "background.js"},
+ "action": {"default_popup": "popup.html", "default_title": "Spatial Mirror Ink"},
+ "content_scripts": [
+  {"matches": ["https://meet.google.com/*", "http://localhost/*"], "js": ["main-world.js"], "world": "MAIN", "run_at": "document_start"},
+  {"matches": ["https://meet.google.com/*", "http://localhost/*"], "js": ["content.js"], "run_at": "document_start"}
+ ],
+ "web_accessible_resources": [{"resources": ["tracker.html"], "matches": ["https://meet.google.com/*", "http://localhost/*"]}],
+ "content_security_policy": {"extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"}
+}
