@@ -13,6 +13,7 @@ function ensureTracker(){
 window.addEventListener('message',e=>{
  if(e.source!==window||e.data?.ns!==NS)return;
  if(e.data.t==='need-config')push();else if(e.data.t==='need-tracker')ensureTracker();else if(e.data.t==='status')status=e.data.status;
+ else if(e.data.t==='patch'){config={...config,...e.data.patch};chrome.storage.session.set({config}).catch(()=>{});}
 });
 chrome.runtime.onMessage.addListener((m,_s,reply)=>{if(m?.type==='status')reply({status,ink:config.ink});});
 (async()=>{

@@ -13,12 +13,14 @@ await mkdir(shots,{recursive:true});
 const nonce='n0nce123',CSPS={strict:`script-src 'nonce-${nonce}'; require-trusted-types-for 'script'`,defaultself:`default-src 'self'; script-src 'nonce-${nonce}'; require-trusted-types-for 'script'`};
 const page=`<!doctype html><meta charset=utf-8><title>test call</title><style>.mirror{transform:scaleX(-1)}</style><video id=v muted playsinline width=320></video><video id=self class=mirror muted playsinline width=160></video><video id=other class=mirror muted playsinline width=160></video>
 <script nonce=${nonce}>
-window.__smInkTest={helloTimeoutMs:1500,dropTracker:location.search.includes('drop')};
+window.__smInkTest={helloTimeoutMs:1500,dropTracker:location.search.includes('drop'),failSegmenter:location.search.includes('failseg')};
 const v=document.getElementById('v');
 window.go=async()=>{const s=await navigator.mediaDevices.getUserMedia({video:true,audio:true});window.stream=s;v.srcObject=s;await v.play();return {video:s.getVideoTracks().length,audio:s.getAudioTracks().length};};
 window.showSelf=async()=>{const s=document.getElementById('self');s.srcObject=stream;await s.play();const c=document.createElement('canvas');c.width=64;c.height=48;c.getContext('2d').fillRect(0,0,9,9);const o=document.getElementById('other');o.srcObject=c.captureStream(10);await o.play();};
 window.matrixA=id=>new DOMMatrix(getComputedStyle(document.getElementById(id)).transform).a;
 window.corners=()=>{const c=document.createElement('canvas');c.width=v.videoWidth;c.height=v.videoHeight;const x=c.getContext('2d');x.drawImage(v,0,0);const d=x.getImageData(0,24,c.width,64).data;let l=0,r=0;for(let k=0;k<d.length;k+=4){if(d[k]>40&&d[k+1]>200){if(((k/4)%c.width)<c.width/2)l++;else r++;}}return {l,r};};
+window.probe=(fx,fy)=>{const c=document.createElement('canvas');c.width=v.videoWidth;c.height=v.videoHeight;const x=c.getContext('2d');x.drawImage(v,0,0);const px=Math.round(fx*c.width),py=Math.round(fy*c.height),d=x.getImageData(px-2,py-2,5,5).data;let r=0,g=0,b=0;for(let i=0;i<d.length;i+=4){r+=d[i];g+=d[i+1];b+=d[i+2];}const n=d.length/4;return [r/n,g/n,b/n];};
+window.textPixels=()=>{const c=document.createElement('canvas');c.width=v.videoWidth;c.height=v.videoHeight;const x=c.getContext('2d');x.drawImage(v,0,0);const d=x.getImageData(0,24,c.width,64).data;let n=0;for(let k=0;k<d.length;k+=4)if(d[k]>40&&d[k+1]>200)n++;return n;};
 window.second=async()=>{const s=await navigator.mediaDevices.getUserMedia({video:true});window.stream2=s;return s.getVideoTracks()[0].readyState;};
 window.grab=(rgb)=>{const c=document.createElement('canvas');c.width=v.videoWidth;c.height=v.videoHeight;const x=c.getContext('2d');x.drawImage(v,0,0);const d=x.getImageData(0,0,c.width,c.height).data;let n=0;for(let i=0;i<d.length;i+=4)if(Math.abs(d[i]-rgb[0])+Math.abs(d[i+1]-rgb[1])+Math.abs(d[i+2]-rgb[2])<90)n++;return {n,w:c.width,h:c.height,png:c.toDataURL('image/png')};};
 window.play=async(frames,ms=33)=>{for(const f of frames){window.__smInk.feed(f);await new Promise(r=>setTimeout(r,ms));}};
@@ -122,6 +124,103 @@ try{
  ok('popup colour and Keep ink reach the page',`blue pixels ${blue}`);
  await popup.bringToFront();await popup.click('#clear');await p.bringToFront();await p.waitForFunction(()=>__smInk.state().strokes.length===0);
  ok('Clear removes ink');
+
+ // 3b. gestures and backgrounds
+ const pop=async sel=>{await popup.bringToFront();await popup.click(sel);await p.bringToFront();};
+ const stored=()=>popup.evaluate(()=>chrome.storage.session.get('config').then(r=>r.config));
+ const bgBtn=n=>`#backgrounds button[data-background=${n}]`;
+ await pop(bgBtn('blur'));await p.evaluate(()=>__smInk.live());
+ await p.waitForFunction(()=>__smInk.state().seg.state==='ok',null,{timeout:30000});await p.waitForTimeout(4000);
+ const on=await state();
+ await pop(bgBtn('off'));await p.waitForTimeout(3500);const offs=await state();
+ assert.ok(on.seg.count>10&&on.hasMask);
+ ok('real MediaPipe selfie segmenter runs in the tracker iframe',`segmentation off: ${offs.fps.toFixed(1)} fps, hand ${offs.ms.toFixed(1)} ms; on (every other frame): ${on.fps.toFixed(1)} fps, hand ${on.ms.toFixed(1)} ms, segmenter ${on.seg.ms.toFixed(1)} ms, ${on.seg.count} masks`);
+ await p.evaluate(()=>__smInk.mask(null));
+ const colourBefore=(await state()).config.colour;
+ await p.evaluate(f=>play(f),Array.from({length:6},()=>hands('open',.5,.6)));
+ await p.evaluate(f=>play(f),Array.from({length:22},()=>hands('victory',.5,.6)));
+ s=await state();assert.notEqual(s.config.colour,colourBefore);assert.ok(s.chip&&s.chip.colour===s.config.colour);
+ assert.equal((await stored()).colour,s.config.colour);
+ await popup.bringToFront();assert.equal(await popup.getAttribute(`#swatches button[data-colour="${s.config.colour}"]`,'aria-checked'),'true');await p.bringToFront();
+ await p.evaluate(f=>play(f),Array.from({length:30},()=>hands('victory',.5,.6)));
+ assert.equal((await state()).config.colour,s.config.colour);
+ await p.evaluate(f=>play(f),Array.from({length:10},()=>hands('open',.5,.6)));
+ await p.evaluate(f=>play(f),Array.from({length:22},()=>hands('victory',.5,.6)));
+ assert.notEqual((await state()).config.colour,s.config.colour);
+ ok('victory hold cycles the colour once per hold, relays to storage and the popup',`${colourBefore} -> ${s.config.colour} -> ${(await state()).config.colour}`);
+ await p.evaluate(f=>play(f),Array.from({length:6},()=>hands('open',.5,.6)));
+ await p.evaluate(f=>play(f),Array.from({length:36},()=>hands('love',.5,.6)));
+ s=await state();assert.equal(s.config.background,'slides');assert.equal(s.chip.text,'Slides');assert.equal((await stored()).background,'slides');
+ await popup.bringToFront();assert.equal(await popup.getAttribute(bgBtn('slides'),'aria-checked'),'true');await p.bringToFront();
+ await p.evaluate(f=>play(f),Array.from({length:30},()=>hands('love',.5,.6)));assert.equal((await state()).config.background,'slides');
+ ok('love hold cycles the background once per hold (Off, Slides, Blur), relays to storage and the popup');
+ await pop(bgBtn('off'));
+ const maskBytes=side=>Array.from({length:12*16},(_,i)=>side==='none'?0:((i%16)<8)===(side==='left')?255:0);
+ const person=c=>c[1]>100&&c[0]<90,slideDark=c=>c[2]>c[0]+6&&Math.max(...c)<90;
+ const sample=async(fy=.08)=>({L:await p.evaluate(fy=>probe(.1,fy),fy),R:await p.evaluate(fy=>probe(.9,fy),fy)});
+ const grid=()=>p.evaluate(()=>{const c=document.createElement('canvas');c.width=64;c.height=36;const x=c.getContext('2d');x.drawImage(document.getElementById('v'),0,0,64,36);return Array.from(x.getImageData(0,0,64,36).data).filter((_,i)=>i%4===0);});
+ const diff=(a,b)=>a.reduce((n,v,i)=>n+Math.abs(v-b[i]),0)/a.length;
+ await pop('#guide');await pop(bgBtn('slides'));await p.evaluate(b=>__smInk.mask(b),maskBytes('left'));await p.waitForTimeout(500);
+ let c=await sample();
+ assert.ok(slideDark(c.L)&&person(c.R),'lightboard on: person (raw left) on the right, slide on the left '+JSON.stringify(c));
+ ok('Slides composite behind the mask in the background region; camera stays in the person region; lightboard mirrors the mask',JSON.stringify(c));
+ await p.evaluate(()=>__smInk.noComposite(true));await p.waitForTimeout(400);
+ assert.equal(slideDark((await sample()).L),false);await p.evaluate(()=>__smInk.noComposite(false));await p.waitForTimeout(400);assert.equal(slideDark((await sample()).L),true);
+ ok('control: with compositing disabled the slide-region assertion fails, enabled it passes');
+ await p.evaluate(b=>__smInk.mask(b),maskBytes('none'));await p.waitForTimeout(500);
+ const slideOn=await grid();
+ await pop('#lightboard');await p.waitForFunction(()=>!__smInk.state().config.lightboard);await p.evaluate(b=>__smInk.mask(b),maskBytes('none'));await p.waitForTimeout(600);
+ const slideOff=await grid();
+ const flipped=slideOn.map((_,i)=>slideOn[(Math.floor(i/64)*64)+(63-i%64)]);
+ assert.ok(diff(slideOn,slideOff)<6,'slide identical with lightboard on/off '+diff(slideOn,slideOff));assert.ok(diff(flipped,slideOff)>diff(slideOn,slideOff)*2+3,'control: a mirrored slide would differ '+diff(flipped,slideOff));
+ ok('slide text is not mirrored by the lightboard (drawn in output space)',`diff same ${diff(slideOn,slideOff).toFixed(2)} vs mirrored control ${diff(flipped,slideOff).toFixed(2)}`);
+ await pop('#lightboard');await p.waitForFunction(()=>__smInk.state().config.lightboard);
+ await p.evaluate(b=>__smInk.mask(b),maskBytes('none'));
+ const guideCount=()=>p.evaluate(()=>{const c=document.createElement('canvas');c.width=v.videoWidth;c.height=v.videoHeight;const x=c.getContext('2d');x.drawImage(v,0,0);const d=x.getImageData(Math.round(c.width*.02),Math.round(c.height*.6),Math.round(c.width*.2),Math.round(c.height*.38)).data;let n=0;for(let k=0;k<d.length;k+=4)if(d[k]>200&&d[k+1]>200&&d[k+2]>200)n++;return n;});
+ await p.waitForTimeout(400);const guideOff=await guideCount();
+ await pop('#guide');await p.waitForFunction(()=>__smInk.state().config.guide);await p.waitForTimeout(500);const guideOn=await guideCount();
+ assert.ok(guideOn>40&&guideOn>guideOff*5+20,`guide ${guideOn} vs ${guideOff}`);
+ ok('gesture guide is drawn when on and absent when off',`bright pixels ${guideOff} -> ${guideOn}`);
+ const slideNow=async()=>(await state()).config.slide;
+ const sw=(from,to,n=9)=>Array.from({length:n},(_,i)=>hands('open',from+(to-from)*i/(n-1),.6));
+ await p.evaluate(f=>play(f),Array.from({length:8},()=>hands('open',.3,.6)));
+ const before0=await slideNow();
+ await p.evaluate(f=>play(f),sw(.15,.85));
+ assert.equal(await slideNow(),(before0+1)%6);assert.match((await state()).chip.text,/^Slide \d of 6$/);assert.equal((await stored()).slide,(before0+1)%6);
+ await p.evaluate(f=>play(f),Array.from({length:25},()=>hands('open',.7,.6)));
+ await p.evaluate(f=>play(f),sw(.85,.15));assert.equal(await slideNow(),before0);
+ await popup.bringToFront();assert.equal(await popup.textContent('#slide'),`Slide ${before0+1} of 6`);await popup.click('#next');await p.bringToFront();
+ await p.waitForFunction(n=>__smInk.state().config.slide===n,(before0+1)%6);await popup.bringToFront();await popup.click('#prev');await p.bringToFront();await p.waitForFunction(n=>__smInk.state().config.slide===n,before0);
+ ok('swipe changes the slide (next toward the viewer\'s left in the self-view), updates storage and the popup; popup buttons work');
+ // slide 2 with ink, guide, then zoom
+ await popup.bringToFront();await popup.click('#next');await p.bringToFront();await p.waitForFunction(n=>__smInk.state().config.slide===n,(before0+1)%6);
+ await p.evaluate(b=>__smInk.mask(b),maskBytes('left'));
+ await p.evaluate(f=>play(f),Array.from({length:6},()=>hands('open',.4,.7)));
+ await p.evaluate(f=>play(f),stroke(30,[.4,.7],[.75,.62]));await p.evaluate(f=>play(f),Array.from({length:6},()=>hands('open',.75,.62)));
+ await p.waitForTimeout(300);
+ const deck=await p.evaluate(()=>grab([0,0,0]));await writeFile(path.join(shots,'outgoing-frame-slide2-ink-guide.png'),Buffer.from(deck.png.split(',')[1],'base64'));
+ await p.evaluate(()=>__smInk.feed([]));
+ const pair=(n,a)=>Array.from({length:n},(_,i)=>{const k=i/(n-1),d=.1+(a-.1)*k;return [imagePose('pinch',.5-d,.5),imagePose('pinch',.5+d,.5)];});
+ await p.evaluate(f=>play(f),Array.from({length:6},()=>[imagePose('pinch',.4,.5),imagePose('pinch',.6,.5)]));
+ await p.evaluate(f=>play(f),pair(16,.3));
+ const zoomed=await state();assert.ok(zoomed.view.zoom>1.8,'zoom '+zoomed.view.zoom);
+ await p.waitForTimeout(150);
+ const zshot=await p.evaluate(()=>grab([0,0,0]));await writeFile(path.join(shots,'outgoing-frame-slide-zoomed.png'),Buffer.from(zshot.png.split(',')[1],'base64'));
+ ok('two-hand pinch zooms the slide',`zoom ${zoomed.view.zoom.toFixed(2)}, pan ${zoomed.view.x.toFixed(2)},${zoomed.view.y.toFixed(2)}`);
+ await p.evaluate(f=>play(f),Array.from({length:12},()=>hands('open',.5,.5)));
+ await p.evaluate(f=>play(f),sw(.15,.85));await p.waitForTimeout(500);assert.equal((await state()).view.zoom,1);
+ ok('a slide change eases the zoom back to 1x');
+ await p.evaluate(f=>play(f),Array.from({length:10},()=>hands('open',.5,.5)));
+ await p.evaluate(f=>play(f),stroke(8,[.3,.6],[.45,.6]));const n0=(await state()).strokes.length;
+ await p.evaluate(f=>play(f),Array.from({length:6},()=>[imagePose('pinch',.3,.6),imagePose('pinch',.7,.5)]));
+ assert.equal((await state()).strokes.length,n0-1);
+ ok('a stroke in progress is cancelled when the second hand pinches');
+ await p.evaluate(f=>play(f),Array.from({length:10},()=>hands('open',.5,.5)));
+ await pop(bgBtn('blur'));await p.evaluate(b=>__smInk.mask(b),maskBytes('left'));await p.waitForTimeout(500);const textCrisp=await p.evaluate(()=>textPixels());
+ await p.evaluate(b=>__smInk.mask(b),maskBytes('right'));await p.waitForTimeout(500);const textSoft=await p.evaluate(()=>textPixels());
+ assert.ok(textSoft<textCrisp*.85,`blur ${textSoft} vs ${textCrisp}`);ok('Blur softens only the background region',`bright text pixels ${textCrisp} -> ${textSoft}`);
+ await p.evaluate(b=>__smInk.mask(b),maskBytes('left'));await pop(bgBtn('off'));await p.waitForTimeout(500);c=await sample(.3);assert.ok(person(c.L)&&person(c.R),'Off leaves camera '+JSON.stringify(c));ok('background Off leaves frames untouched');
+ await p.evaluate(()=>__smInk.mask(null));
  const png=await p.screenshot({path:path.join(shots,'call-page.png')});
 
  // 4. toggle camera: stop, ask again, concurrent streams
@@ -147,6 +246,15 @@ try{
  const fs=(await statuses(popup)).find(x=>x.status.tracker==='failed');assert.ok(fs);
  ok('tracker iframe never answers: status failed, outgoing video still plays the raw camera',JSON.stringify(fs.status));
 
+
+ // 5b. segmenter failure falls back to Off
+ const f=await context.newPage();await f.goto(base+'?failseg=1');await f.evaluate(()=>go());
+ await f.waitForFunction(()=>__smInk.state().tracker==='ready',null,{timeout:30000});
+ await popup.bringToFront();await popup.click(bgBtn('blur'));await f.bringToFront();
+ await f.waitForFunction(()=>__smInk.state().seg.state==='failed'&&__smInk.state().config.background==='off',null,{timeout:10000});
+ await popup.bringToFront();await popup.waitForFunction(()=>chrome.storage.session.get('config').then(r=>r.config.background==='off'));
+ const fst=(await statuses(popup)).find(x=>x.status.seg==='failed');assert.ok(fst);
+ ok('segmenter failure falls back to Off and reports it',JSON.stringify(fst.status));
  // 6. informational: a default-src 'self' page
  const r=await context.newPage();await r.goto(base+'?csp=defaultself');await r.evaluate(()=>go());
  const outcome=await r.waitForFunction(()=>['ready','failed'].includes(__smInk.state().tracker)&&__smInk.state().tracker,null,{timeout:30000}).then(h=>h.jsonValue());

@@ -26,6 +26,8 @@ export class InkBoard {
   return false;
  }
  clear(){this.strokes=[];this.active=null;}
+ /** Drops the stroke in progress without keeping it. */
+ cancelActive(){if(this.active)this.strokes=this.strokes.filter(s=>s!==this.active);this.active=null;}
 }
 
 /** The slice of a TrackedHand the ink needs, so a GestureFrame passes straight in. */
@@ -35,25 +37,29 @@ export interface InkOptions {colour:string;width:number;
  /** Store x mirrored, for a surface that shows the unmirrored camera while gestures are in mirror space. */
  flipX:boolean;
  /** Palm length (wrist to middle knuckle) below which a pinch is ignored as a far or tiny hand. */
- minPalm:number;graceMs:number;undoHoldMs:number}
-export const INK_DEFAULTS:InkOptions={colour:'#ff3b30',width:DEFAULT_WIDTH,flipX:false,minPalm:.05,graceMs:150,undoHoldMs:500};
+ minPalm:number;graceMs:number;undoHoldMs:number;
+ /** Two pinching hands belong to the slide zoom: a stroke in progress is cancelled and none starts until both let go. */
+ twoHand:boolean}
+export const INK_DEFAULTS:InkOptions={colour:'#ff3b30',width:DEFAULT_WIDTH,flipX:false,minPalm:.05,graceMs:150,undoHoldMs:500,twoHand:false};
 export interface InkCursor {x:number;y:number;drawing:boolean}
 
 export class InkController {
  options:InkOptions;cursor:InkCursor|null=null;
- private handId:number|null=null;private lostAt:number|null=null;private downSince:number|null=null;private undone=false;
+ private blocked=false;private handId:number|null=null;private lostAt:number|null=null;private downSince:number|null=null;private undone=false;
  constructor(readonly board=new InkBoard(),options:Partial<InkOptions>={}){this.options={...INK_DEFAULTS,...options};}
  private map(p:MirrorPoint):InkPoint{return {x:this.options.flipX?1-p.x:p.x,y:p.y};}
  private pinching(hand:InkHand){const a=hand.landmarks[0],b=hand.landmarks[9];return hand.pose==='pinch'&&!!a&&!!b&&Math.hypot(a.x-b.x,a.y-b.y)>=this.options.minPalm;}
  update(frame:InkFrame){
-  const {at}=frame,o=this.options,hands=frame.hands;
-  if(this.handId!==null){
+  const {at}=frame,o=this.options,hands=frame.hands,pinchers=hands.filter(h=>this.pinching(h)).length;
+  if(o.twoHand&&pinchers>=2){this.blocked=true;if(this.handId!==null){this.board.cancelActive();this.handId=null;this.lostAt=null;}}
+  else if(pinchers===0)this.blocked=false;
+  if(!this.blocked&&this.handId!==null){
    const hand=hands.find(h=>h.id===this.handId);
    if(hand&&this.pinching(hand)){this.lostAt=null;const p=this.map(hand.pinch);this.board.add(p.x,p.y);}
    else if(hand)this.finish(at);
    else{this.lostAt??=at;if(at-this.lostAt>=o.graceMs)this.finish(at);}
   }
-  if(this.handId===null){
+  if(this.handId===null&&!this.blocked){
    const hand=hands.find(h=>this.pinching(h));
    if(hand){this.handId=hand.id;this.lostAt=null;const p=this.map(hand.pinch);this.board.begin(p.x,p.y,at,o.colour,o.width);}
   }

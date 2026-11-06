@@ -2,6 +2,9 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {InkBoard,InkController,type InkCursor,type InkFrame,type InkHand} from '../src/ink/ink';
 import {renderInk} from '../src/ink/render';
+import {StyleGestures,nextIn} from '../src/ink/style';
+import {SwipeDetector} from '../src/ink/swipe';
+import {SlideView} from '../src/ink/zoom';
 import {GestureTracker} from '../src/mirror/gestures';
 import {imagePose,type PoseName} from './hand-fixtures';
 
@@ -77,4 +80,69 @@ test('renderInk draws strokes with fade and the cursor',()=>{
  const b=new InkBoard();b.begin(.1,.1,0,'#f00');b.add(.5,.5);b.end(0);
  renderInk(ctx,640,480,b,4000,{x:.5,y:.5,drawing:false});
  assert.ok(calls.includes('stroke')&&calls.includes('arc'));assert.ok(Math.abs(alphas[0]-.5)<1e-9);
+});
+
+test('victory held 0.5 s cycles colour once, repeats only after release',()=>{
+ const s=new StyleGestures(),run=(at:number,...h:InkHand[])=>s.update(frame(at,...h),false);
+ assert.deepEqual(run(0,hand('victory')),[]);assert.deepEqual(run(400,hand('victory')),[]);assert.deepEqual(run(500,hand('victory')),['colour']);
+ assert.deepEqual(run(1500,hand('victory')),[]);assert.deepEqual(run(3000,hand('victory')),[]);
+ assert.deepEqual(run(3100,hand('open')),[]);assert.deepEqual(run(3300,hand('open')),[]);
+ assert.deepEqual(run(3400,hand('victory')),[]);assert.deepEqual(run(3900,hand('victory')),['colour']);
+});
+test('love held 1.0 s cycles background and not earlier',()=>{
+ const s=new StyleGestures(),run=(at:number,...h:InkHand[])=>s.update(frame(at,...h),false);
+ run(0,hand('love'));assert.deepEqual(run(900,hand('love')),[]);assert.deepEqual(run(1000,hand('love')),['background']);assert.deepEqual(run(2500,hand('love')),[]);
+});
+test('style gestures are ignored while drawing or pinching',()=>{
+ const s=new StyleGestures();
+ s.update(frame(0,hand('victory')),true);assert.deepEqual(s.update(frame(800,hand('victory')),true),[]);
+ s.update(frame(900,hand('victory')),false);assert.deepEqual(s.update(frame(1200,hand('victory'),hand('pinch',.2,.2,.2,2)),false),[]);
+ s.update(frame(1300,hand('victory')),false);assert.deepEqual(s.update(frame(1750,hand('victory')),false),[]);assert.deepEqual(s.update(frame(1800,hand('victory')),false),['colour']);
+});
+test('a tracking flicker under 150 ms keeps the hold; a longer gap restarts it',()=>{
+ const s=new StyleGestures(),run=(at:number,...h:InkHand[])=>s.update(frame(at,...h),false);
+ run(0,hand('victory'));run(300,hand('victory'));run(380);assert.deepEqual(run(520,hand('victory')),['colour']);
+ assert.deepEqual(run(560),[]);assert.deepEqual(run(650,hand('victory')),[]);assert.deepEqual(run(1500,hand('victory')),[]);
+ run(1600);assert.deepEqual(run(1800),[]);run(1900,hand('victory'));assert.deepEqual(run(2300,hand('victory')),[]);assert.deepEqual(run(2400,hand('victory')),['colour']);
+});
+test('nextIn cycles and wraps',()=>{assert.equal(nextIn(['a','b','c'],'b'),'c');assert.equal(nextIn(['a','b','c'],'c'),'a');});
+test('the real GestureTracker drives colour and background changes',()=>{
+ const tracker=new GestureTracker(),style=new StyleGestures(),seen:string[]=[];let at=0;
+ const run=(pose:PoseName,ms:number)=>{for(const end=at+ms;at<end;at+=33)seen.push(...style.update(tracker.update([imagePose(pose,.5,.6)],at,[],[],1),false));};
+ run('open',200);run('victory',900);run('open',400);run('love',1500);
+ assert.deepEqual(seen,['colour','background']);
+});
+
+const sweep=(d:SwipeDetector,from:number,to:number,ms:number,y0=.5,y1=.5,t0=0,pose:InkHand['pose']='open')=>{let out:string|null=null;const n=Math.round(ms/33);for(let i=0;i<=n;i++){const k=i/n,r=d.update(frame(t0+i*33,hand(pose,from+(to-from)*k,y0+(y1-y0)*k,.2)));if(r)out=r;}return out;};
+test('an open-hand sweep left is next and right is previous; the hand is in mirror space',()=>{
+ assert.equal(sweep(new SwipeDetector(),.7,.3,300),'next');assert.equal(sweep(new SwipeDetector(),.3,.7,300),'prev');
+});
+test('slow, short, vertical and non-open movements are not swipes',()=>{
+ assert.equal(sweep(new SwipeDetector(),.7,.3,1500),null);assert.equal(sweep(new SwipeDetector(),.5,.4,300),null);
+ assert.equal(sweep(new SwipeDetector(),.5,.5,300,.2,.8),null);assert.equal(sweep(new SwipeDetector(),.7,.3,300,.5,.5,0,'fist'),null);
+});
+test('swipes have a cooldown',()=>{
+ const d=new SwipeDetector();assert.equal(sweep(d,.7,.3,300),'next');assert.equal(sweep(d,.7,.3,300,.5,.5,330),null);assert.equal(sweep(d,.7,.3,300,.5,.5,1500),'next');
+});
+const two=(at:number,ax:number,bx:number,y=.5)=>frame(at,hand('pinch',ax,y,.2,1),hand('pinch',bx,y,.2,2));
+test('two pinching hands zoom by their spread about the midpoint and pan together, clamped to 1x..4x',()=>{
+ const v=new SlideView();v.update(two(0,.4,.6),true,false);v.update(two(33,.3,.7),true,false);
+ assert.ok(Math.abs(v.zoom-2)<1e-6);assert.ok(Math.abs(v.x)<1e-6&&Math.abs(v.y)<1e-6);
+ v.update(two(66,.35,.75),true,false);assert.ok(Math.abs(v.zoom-2)<1e-6);assert.ok(Math.abs(v.x-.05)<1e-6);
+ v.update(two(99,-.5,1.5),true,false);assert.equal(v.zoom,4);assert.ok(Math.abs(v.x)<=1.5+1e-9);
+ v.update(two(132,.5,.5),true,false);assert.equal(v.zoom,1);
+ const w=new SlideView();w.update(two(0,.4,.6),false,false);w.update(two(33,.2,.8),false,false);assert.equal(w.zoom,1);
+ const flip=new SlideView();flip.update(two(0,.4,.6),true,true);flip.update(two(33,.4,.8),true,true);assert.ok(flip.x<0);
+});
+test('slide view eases back to whole after reset',()=>{
+ const v=new SlideView();v.update(two(0,.4,.6),true,false);v.update(two(33,.2,.8),true,false);const z=v.zoom;v.reset(1000);
+ assert.ok(v.current(1150).zoom<z&&v.current(1150).zoom>1);assert.equal(v.current(1400).zoom,1);
+});
+test('a second pinching hand cancels the stroke in progress and blocks drawing until both release; off outside slides',()=>{
+ const c=new InkController();c.options.twoHand=true;
+ c.update(frame(0,hand('pinch',.2,.3,.2,1)));c.update(frame(33,hand('pinch',.3,.3,.2,1)));assert.equal(c.board.strokes.length,1);
+ c.update(frame(66,hand('pinch',.3,.3,.2,1),hand('pinch',.7,.3,.2,2)));assert.equal(c.board.strokes.length,0);assert.equal(c.board.drawing,false);
+ c.update(frame(99,hand('pinch',.3,.3,.2,1)));assert.equal(c.board.strokes.length,0);
+ c.update(frame(132,hand('open',.3,.3,.2,1)));c.update(frame(165,hand('pinch',.3,.3,.2,1)));assert.equal(c.board.strokes.length,1);
+ const d=new InkController();d.update(frame(0,hand('pinch',.2,.3,.2,1)));d.update(frame(33,hand('pinch',.2,.3,.2,1),hand('pinch',.7,.3,.2,2)));assert.equal(d.board.strokes.length,1);
 });

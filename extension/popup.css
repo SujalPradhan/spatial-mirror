@@ -7,3 +7,9 @@ label{display:flex;gap:8px;align-items:center}
 #swatches button[aria-checked=true]{border-color:#fff}
 #clear{padding:6px;border:1px solid #444;border-radius:6px;background:#23262d;color:inherit;cursor:pointer}
 #status{margin:0;color:#9aa}
+#backgrounds{display:flex;gap:6px}
+#backgrounds button{flex:1;height:30px;border-radius:6px;border:2px solid transparent;cursor:pointer;padding:0;color:#fff;font:11px system-ui,sans-serif;text-shadow:0 1px 2px #000}
+#backgrounds button[aria-checked=true]{border-color:#fff}
+.note{margin:0;color:#9aa;font-size:11px;line-height:1.35}
+#slides{display:flex;gap:8px;align-items:center;justify-content:space-between}
+#slides button{width:32px;padding:4px;border:1px solid #444;border-radius:6px;background:#23262d;color:inherit;cursor:pointer}
