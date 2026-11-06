@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {gestureGuide} from '../src/atp/content';
 import type {GestureEvent,GestureFrame,HandPose,TrackedHand} from '../src/atp/contracts';
-import {Tutorial,markTutorialSeen,tutorialSeen,type TutorialPose,type TutorialStep,type TutorialView} from '../src/mirror/tutorial';
+import {Tutorial,markTutorialSeen,tutorialCore,tutorialSeen,type TutorialPose,type TutorialStep,type TutorialView} from '../src/mirror/tutorial';
 
 const frame=(at:number,poses:HandPose[]=[],events:GestureEvent[]=[]):GestureFrame=>({at,events,hands:poses.map((pose,id)=>({id,pose}) as TrackedHand)});
 const clap:GestureEvent={type:'clap',x:.5,y:.5};
@@ -110,4 +110,62 @@ test('seen flag round-trips under mirror-tutorial-v1',()=>{
 test('storage that throws reads as unseen and never escapes',()=>{
  const storage={getItem():string|null{throw new Error('denied');},setItem(){throw new Error('quota');}};
  assert.equal(tutorialSeen(storage),false);assert.doesNotThrow(()=>markTutorialSeen(storage));
+});
+
+test('first use teaches three core gestures with the object labels and preserves the full guide',()=>{
+ const guide=gestureGuide.map(step=>({...step,label:`Object ${step.label}`})),original=structuredClone(guide);
+ const core=tutorialCore(guide);
+ assert.deepEqual(core.map(s=>s.id),['fist','open','pinch']);
+ assert.deepEqual(core.map(s=>s.label),['Object Hold','Object Part','Object Pluck']);
+ assert.deepEqual(guide,original);assert.equal(guide.length,11);
+ assert.deepEqual(tutorialCore(guide,true),[],'native calibration and guided chapters do not teach generic controls');
+});
+test('manual navigation covers every step without tracking, with bounded previous and next',()=>{
+ const t=new Tutorial(steps('fist','open','pinch'));
+ assert.equal(t.previous().index,0);
+ assert.deepEqual([t.next().index,t.next().index,t.next().done],[1,2,true]);
+ assert.deepEqual([t.next().index,t.next().done],[3,true]);
+ const back=t.previous();assert.deepEqual([back.index,back.done,back.step?.pose,back.justCompleted],[2,false,'pinch',false]);
+ assert.equal(t.previous().index,1);assert.equal(t.previous().index,0);assert.equal(t.previous().index,0);
+ const empty=new Tutorial([]);assert.equal(empty.previous().done,true);assert.equal(empty.next().done,true);
+ t.skip();assert.equal(t.previous().index,2);
+});
+test('going backwards discards a partial hold and requires release of the destination pose',()=>{
+ const t=new Tutorial(steps('fist','open'));
+ run(t,['fist'],0,600);t.update(frame(700,['open']),700);assert.equal(t.update(frame(1000,['open']),1000).progress,.5);
+ const v=t.previous();assert.deepEqual([v.index,v.progress,v.hint,v.justCompleted,v.needsRelease],[0,0,false,false,true]);
+ assert.equal(run(t,['fist'],1100,4000).index,0,'a held destination pose cannot skip the revisited lesson');
+ t.update(frame(4100,['pinch']),4100);
+ assert.equal(t.update(frame(4200,['fist']),4200).progress,0);
+ assert.equal(t.update(frame(4799,['fist']),4799).index,0);
+ assert.equal(t.update(frame(4800,['fist']),4800).index,1);
+});
+test('going forwards gates a pose already held on the new step, including a second hand',()=>{
+ const t=new Tutorial(steps('fist','open','pinch'));
+ t.update(frame(0,['fist','open']),0);assert.equal(t.next().index,1);
+ assert.equal(run(t,['fist','open'],100,3000).progress,0);
+ t.update(frame(3100,['fist']),3100);
+ assert.equal(run(t,['open'],3200,3800).index,2);
+ assert.equal(run(t,['open'],3900,5000).done,false);
+});
+test('repeated previous and next reset old release gates and stalled clocks',()=>{
+ const t=new Tutorial(steps('fist','fist','open'));
+ run(t,['fist'],0,600);assert.equal(t.update(frame(8600,['fist']),8600).hint,true);
+ t.next();t.previous();
+ assert.deepEqual([t.update(frame(20000,['fist']),20000).progress,t.update(frame(20000,['fist']),20000).hint],[0,false]);
+ assert.equal(t.update(frame(28000,['fist']),28000).hint,true);
+ t.update(frame(28100),28100);assert.equal(run(t,['fist'],28200,28800).index,2);
+});
+test('tracking loss clears holds and manual release gates without completing lessons',()=>{
+ const t=new Tutorial(steps('fist','open'));t.next();
+ assert.equal(run(t,['open'],0,1000).progress,0);
+ const lost=t.update(frame(1100,[],[{type:'lost',handId:0}]),1100);assert.equal(lost.index,1);assert.equal(lost.progress,0);
+ run(t,['open'],1200,1700);assert.equal(t.update(frame(1750),1750).progress,0);
+ assert.equal(run(t,['pinch'],1800,3000).index,1,'wrong poses cannot stand in for the lesson');
+ assert.equal(run(t,['open'],3100,3700).done,true);
+});
+test('a clap carried across manual navigation is ignored until its event clears',()=>{
+ const t=new Tutorial(steps('fist','clap'));t.next();
+ assert.equal(t.update(frame(0,[],[clap]),0).done,false);assert.equal(t.update(frame(100,[],[clap]),100).done,false);
+ t.update(frame(200),200);assert.equal(t.update(frame(300,[],[clap]),300).done,true);
 });

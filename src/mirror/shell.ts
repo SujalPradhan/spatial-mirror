@@ -14,7 +14,7 @@ import {mirrorGestures} from './guide';
 import {GestureTracker} from './gestures';
 import {MirrorPhoneInput} from './input';
 import {mountMirrorPage} from './page';
-import {Tutorial,markTutorialSeen,tutorialSeen,type TutorialStep,type TutorialView} from './tutorial';
+import {Tutorial,markTutorialSeen,tutorialCore,tutorialSeen,type TutorialStep,type TutorialView} from './tutorial';
 const $=<T extends HTMLElement=HTMLElement>(id:string)=>document.querySelector<T>(id)!;
 const clamp=(n:number,min:number,max:number)=>Math.max(min,Math.min(max,n));
 
@@ -25,6 +25,8 @@ document.title=object.title;
 const gestures=mirrorGestures({thumbUp:object.motion.run,thumbDown:object.motion.reverse,...object.gestures});
 mountMirrorPage($('#app'),{id,copy:object.copy,about:object.about,gestures});
 const tutorialBox=part('tutorial'),tutorialText=tutorialBox.querySelector('p')!;
+const tutorialSteps=tutorialCore(gestures,!!object.handShape||id==='organ');
+const tutorialPrevious=part<HTMLButtonElement>('tutorial-previous'),tutorialNext=part<HTMLButtonElement>('tutorial-next');
 let tutorial:Tutorial|null=null,tutorialClap=false,tutorialDoneAt=0,tutorialView:TutorialView|null=null;
 let state:MirrorState=object.state.initial(),client:ControlClient|null=null,owns=false,playing=false,context=0,ready=false,muted=false;
 let drag:{id:number;x:number;y:number;view:MirrorState['view'];pluck:boolean}|null=null,lastFine=-Infinity,lastPublish=0,lastDescriptor='',spoken='';
@@ -128,17 +130,34 @@ async function startCamera(){
 part('camera').onclick=()=>void startCamera();
 const seenStore={getItem:(k:string)=>localStorage.getItem(k),setItem:(k:string,v:string)=>localStorage.setItem(k,v)};
 const tutorialHint=(step:TutorialStep)=>step.pose==='clap'?'Start with your hands apart, then bring them together.':step.id.startsWith('both')?'Show both hands to the camera.':'Hold your hand still, palm to the camera.';
-function startTutorial(){tutorial=new Tutorial(gestures);tutorialDoneAt=0;tutorialBox.hidden=false;}
+function startTutorial(){if(!tutorialSteps.length)return;tutorial=new Tutorial(tutorialSteps);tutorialClap=false;tutorialDoneAt=0;tutorialBox.hidden=false;renderTutorial(tutorial.current,performance.now());}
 function firstTutorial(){if(!tutorial&&!tutorialSeen(seenStore))startTutorial();}
-function endTutorial(){tutorial=null;tutorialView=null;tutorialBox.hidden=true;}
+function endTutorial(){tutorial=null;tutorialView=null;tutorialClap=false;tutorialDoneAt=0;tutorialBox.hidden=true;}
 function drawTutorial(now:number){
  if(!tutorial)return;
  // Two tracker updates can land in one render, so a clap is carried over rather than read from the latest frame.
- const v=tutorialView=tutorial.update(tutorialClap?{...frame,events:[...frame.events,{type:'clap',x:0,y:0}]}:frame,now);tutorialClap=false;
- if(v.done){if(!tutorialDoneAt){tutorialDoneAt=now;markTutorialSeen(seenStore);tutorialBox.querySelector('i')!.textContent='✓';tutorialText.querySelector('b')!.textContent='That is every gesture';tutorialText.querySelector('small')!.textContent='';tutorialBox.querySelector<HTMLElement>('.mirror-tutorial-bar span')!.style.width='100%';}else if(now-tutorialDoneAt>1800)endTutorial();return;}
- tutorialBox.querySelector('i')!.textContent=v.step!.glyph;tutorialText.querySelector('b')!.textContent=v.step!.label;tutorialText.querySelector('small')!.textContent=v.hint?tutorialHint(v.step!):`${v.index+1} of ${v.total}`;
+ const v=tutorial.update(tutorialClap?{...frame,events:[...frame.events,{type:'clap',x:0,y:0}]}:frame,now);tutorialClap=false;
+ renderTutorial(v,now);
+}
+function renderTutorial(v:TutorialView,now:number){
+ tutorialView=v;
+ tutorialPrevious.disabled=v.index===0;tutorialNext.disabled=v.done;
+ tutorialNext.textContent=v.done?'Finished':v.index===v.total-1?'Finish':'Next';tutorialNext.setAttribute('aria-label',v.done?'Tutorial finished':v.index===v.total-1?'Finish tutorial':'Next tutorial step');
+ if(v.done){if(!tutorialDoneAt){tutorialDoneAt=now;markTutorialSeen(seenStore);tutorialBox.querySelector('i')!.textContent='✓';tutorialText.querySelector('b')!.textContent='Three gestures to start';tutorialText.querySelector('small')!.textContent='More gestures remain in the guide.';tutorialBox.querySelector<HTMLElement>('.mirror-tutorial-bar span')!.style.width='100%';}else if(now-tutorialDoneAt>1800)endTutorial();return;}
+ tutorialBox.querySelector('i')!.textContent=v.step!.glyph;tutorialText.querySelector('b')!.textContent=v.step!.label;tutorialText.querySelector('small')!.textContent=`${v.index+1} of ${v.total} · ${v.needsRelease?'Release the pose, then hold again or use the buttons':v.hint?tutorialHint(v.step!):'Hold the pose or use the buttons'}`;
  tutorialBox.querySelector<HTMLElement>('.mirror-tutorial-bar span')!.style.width=`${v.progress*100}%`;
 }
+function navigateTutorial(direction:-1|1){
+ if(!tutorial||direction<0&&tutorialView?.index===0||direction>0&&tutorialView?.done)return;
+ tutorialClap=false;tutorialDoneAt=0;
+ renderTutorial(direction<0?tutorial.previous():tutorial.next(),performance.now());
+}
+tutorialPrevious.onclick=()=>navigateTutorial(-1);tutorialNext.onclick=()=>navigateTutorial(1);
+document.addEventListener('keydown',e=>{
+ if(!tutorial||tutorialBox.hidden||!tutorialBox.isConnected||e.defaultPrevented||e.repeat||e.altKey||e.ctrlKey||e.metaKey||e.shiftKey||document.querySelector('dialog[open]'))return;
+ if(e.target instanceof Element&&e.target.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"]),[role="textbox"],[role="slider"],[role="spinbutton"]'))return;
+ if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();navigateTutorial(e.key==='ArrowLeft'?-1:1);}
+});
 part('tutorial-replay').onclick=()=>{void audio.start();startTutorial();};
 part('tutorial-skip').onclick=()=>{markTutorialSeen(seenStore);endTutorial();};
 function lightGuide(){

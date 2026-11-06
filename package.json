@@ -12,6 +12,7 @@
     "test": "tsx --test tests/*.test.ts",
     "test:browser": "node tests/browser.mjs && node tests/studio-browser.mjs && node tests/navigation-browser.mjs && node tests/mechanism-browser.mjs && node tests/camera-start-browser.mjs && node tests/workspace-nav-browser.mjs && node tests/stand-browser.mjs && node tests/connected-browser.mjs && node tests/maths-browser.mjs && node tests/maths-demo-browser.mjs",
     "test:maths": "node tests/maths-browser.mjs && node tests/maths-demo-browser.mjs",
+    "test:tutorial": "tsx tests/mirror-tutorial-browser.mjs",
     "demo:record": "node scripts/record-projection-demo.mjs",
     "demo:record:voice": "node scripts/record-narrated-projection.mjs",
     "phone": "node scripts/connect-phone.mjs",
