@@ -11,11 +11,14 @@ const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..'),ext=p
 const shots=process.env.SHOTS||'/private/tmp/claude-501/-Users-sujal-Mobile-Apps/5102d236-49d8-4b20-bc4c-0f6815aca7f0/scratchpad/agent3';
 await mkdir(shots,{recursive:true});
 const nonce='n0nce123',CSPS={strict:`script-src 'nonce-${nonce}'; require-trusted-types-for 'script'`,defaultself:`default-src 'self'; script-src 'nonce-${nonce}'; require-trusted-types-for 'script'`};
-const page=`<!doctype html><meta charset=utf-8><title>test call</title><video id=v muted playsinline width=320></video>
+const page=`<!doctype html><meta charset=utf-8><title>test call</title><style>.mirror{transform:scaleX(-1)}</style><video id=v muted playsinline width=320></video><video id=self class=mirror muted playsinline width=160></video><video id=other class=mirror muted playsinline width=160></video>
 <script nonce=${nonce}>
 window.__smInkTest={helloTimeoutMs:1500,dropTracker:location.search.includes('drop')};
 const v=document.getElementById('v');
 window.go=async()=>{const s=await navigator.mediaDevices.getUserMedia({video:true,audio:true});window.stream=s;v.srcObject=s;await v.play();return {video:s.getVideoTracks().length,audio:s.getAudioTracks().length};};
+window.showSelf=async()=>{const s=document.getElementById('self');s.srcObject=stream;await s.play();const c=document.createElement('canvas');c.width=64;c.height=48;c.getContext('2d').fillRect(0,0,9,9);const o=document.getElementById('other');o.srcObject=c.captureStream(10);await o.play();};
+window.matrixA=id=>new DOMMatrix(getComputedStyle(document.getElementById(id)).transform).a;
+window.corners=()=>{const c=document.createElement('canvas');c.width=v.videoWidth;c.height=v.videoHeight;const x=c.getContext('2d');x.drawImage(v,0,0);const d=x.getImageData(0,24,c.width,64).data;let l=0,r=0;for(let k=0;k<d.length;k+=4){if(d[k]>40&&d[k+1]>200){if(((k/4)%c.width)<c.width/2)l++;else r++;}}return {l,r};};
 window.second=async()=>{const s=await navigator.mediaDevices.getUserMedia({video:true});window.stream2=s;return s.getVideoTracks()[0].readyState;};
 window.grab=(rgb)=>{const c=document.createElement('canvas');c.width=v.videoWidth;c.height=v.videoHeight;const x=c.getContext('2d');x.drawImage(v,0,0);const d=x.getImageData(0,0,c.width,c.height).data;let n=0;for(let i=0;i<d.length;i+=4)if(Math.abs(d[i]-rgb[0])+Math.abs(d[i+1]-rgb[1])+Math.abs(d[i+2]-rgb[2])<90)n++;return {n,w:c.width,h:c.height,png:c.toDataURL('image/png')};};
 window.play=async(frames,ms=33)=>{for(const f of frames){window.__smInk.feed(f);await new Promise(r=>setTimeout(r,ms));}};
@@ -55,6 +58,29 @@ try{
  await p.evaluate(h=>{for(let i=0;i<20;i++)window.postMessage({ns:'sm-ink',t:'result',token:'guess',landmarks:h,worldLandmarks:[],handedness:[],ms:1},'*');},hands('pinch',.5,.5));
  await p.waitForTimeout(300);assert.equal((await state()).strokes.length,0);ok('forged tracker results from the page are ignored');
 
+ // 1b. lightboard: default on, mirrored output, self-view counter flip
+ assert.equal((await state()).config.lightboard,true);ok('lightboard is on by default');
+ const lbOn=await p.evaluate(()=>corners());
+ const rightHeavy=c=>c.r>c.l*3&&c.r>50,leftHeavy=c=>c.l>c.r*3&&c.l>50;
+ assert.ok(rightHeavy(lbOn),'lightboard on: timestamp text mirrored to the right '+JSON.stringify(lbOn));
+ await p.evaluate(()=>showSelf());
+ await p.waitForFunction(()=>document.getElementById('self').dataset.smInkFlip==='1',null,{timeout:5000});
+ const net=id=>p.evaluate(id=>matrixA(id),id);
+ assert.ok(await net('self')>0,'self view net flip');assert.ok(await net('other')<0,'other stream untouched');
+ assert.equal(await p.evaluate(()=>document.getElementById('other').dataset.smInkFlip),undefined);
+ await p.evaluate(()=>{document.getElementById('self').style.transform='scaleX(-1)';});
+ await p.waitForFunction(()=>new DOMMatrix(getComputedStyle(document.getElementById('self')).transform).a>0,null,{timeout:3000});
+ ok('self-view of our track gets a counter flip (net no mirror), re-applied after the page rewrites it; a different stream is untouched');
+ await popup.bringToFront();await popup.click('#lightboard');await p.bringToFront();
+ await p.waitForFunction(()=>!__smInk.state().config.lightboard);await p.waitForTimeout(700);
+ const lbOff=await p.evaluate(()=>corners());
+ assert.ok(leftHeavy(lbOff)&&!rightHeavy(lbOff),'lightboard off: text stays on the left (control) '+JSON.stringify(lbOff));
+ assert.ok(await net('self')<0,'self view restored');assert.equal(await p.evaluate(()=>document.getElementById('self').style.transform),'scaleX(-1)');
+ assert.equal(await p.evaluate(()=>document.getElementById('self').dataset.smInkFlip),undefined);
+ ok('lightboard off: output is the unmirrored camera (timestamp text is on the right when on, on the left when off), self-view original transform restored',`text pixels left/right: on ${lbOn.l}/${lbOn.r}, off ${lbOff.l}/${lbOff.r}`);
+ await popup.bringToFront();await popup.click('#lightboard');await p.bringToFront();await p.waitForFunction(()=>__smInk.state().config.lightboard);await p.waitForTimeout(700);
+ assert.ok(await net('self')>0);ok('popup lightboard toggle works end to end');
+
  // 2. synthetic landmarks through the real gesture path
  const before=await p.evaluate(rgb=>grab(rgb).n,RED);
  await p.evaluate(()=>__smInk.feed([]));
@@ -68,7 +94,11 @@ try{
  const st2=await tabStatus();assert.equal(st2.status.hand,true);
  ok('pinch stroke appears in the outgoing video',`red pixels ${before} -> ${shot.n}, stroke points ${s.strokes[0].n}`);
  const y0=s.strokes[0].first.y;assert.ok(await p.evaluate(([rgb,y,w,h])=>{const c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d');x.drawImage(document.getElementById('v'),0,0);const d=x.getImageData(0,Math.round(y*h)-6,w,12).data;let n=0;for(let i=0;i<d.length;i+=4)if(Math.abs(d[i]-rgb[0])+Math.abs(d[i+1]-rgb[1])+Math.abs(d[i+2]-rgb[2])<90)n++;return n>20;},[RED,y0,shot.w,shot.h]));
- ok('ink sits on the path the hand drew (unmirrored frame)');
+ const raw=imagePose('pinch',.3,.6),rawX=(raw[4].x+raw[8].x)/2;
+ assert.ok(Math.abs(s.strokes[0].first.x-(1-rawX))<.02,'stored x is mirrored '+s.strokes[0].first.x+' vs '+(1-rawX));
+ const col=await p.evaluate(([rgb,x,y,w,h])=>{const c=document.createElement('canvas');c.width=w;c.height=h;const g=c.getContext('2d');g.drawImage(document.getElementById('v'),0,0);const d=g.getImageData(Math.round(x*w)-8,Math.round(y*h)-8,16,16).data;let n=0;for(let i=0;i<d.length;i+=4)if(Math.abs(d[i]-rgb[0])+Math.abs(d[i+1]-rgb[1])+Math.abs(d[i+2]-rgb[2])<90)n++;return n;},[RED,s.strokes[0].first.x,y0,shot.w,shot.h]);
+ assert.ok(col>5,'ink under mirrored fingertip '+col);
+ ok('ink starts under the mirrored fingertip in the outgoing frame (lightboard)');
  await p.evaluate(f=>play(f),Array.from({length:6},()=>hands('open',.5,.6)));
  await p.evaluate(f=>play(f),Array.from({length:24},()=>hands('thumbDown',.5,.6)));
  s=await state();assert.equal(s.strokes.length,0);await p.waitForTimeout(250);

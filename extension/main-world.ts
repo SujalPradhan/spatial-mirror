@@ -5,7 +5,7 @@ import {DEFAULT_CONFIG,IDLE_STATUS,NS,type InkConfig,type InkStatus,type Tracker
 
 const FRAME_W=320,SEND_MS=50,STALL_MS=3000;
 const testing=location.hostname==='localhost';
-const board=new InkBoard(),ctl=new InkController(board,{flipX:true}),gestures=new GestureTracker();
+const board=new InkBoard(),ctl=new InkController(board),gestures=new GestureTracker();
 let config:InkConfig=DEFAULT_CONFIG,clearSeen:number|null=null,synthetic=false;
 interface Pipe {video:HTMLVideoElement;canvas:HTMLCanvasElement;ctx:CanvasRenderingContext2D;src:MediaStreamTrack;out:MediaStreamTrack;timer:number;dead:boolean}
 const pipes=new Set<Pipe>();
@@ -61,7 +61,10 @@ function publish(){
  const json=JSON.stringify(status);if(json===lastPublished)return;lastPublished=json;toContent({t:'status',status});
 }
 function applyConfig(next:InkConfig){
- const now=performance.now();config={...DEFAULT_CONFIG,...next};
+ const now=performance.now(),was=config.lightboard;config={...DEFAULT_CONFIG,...next};
+ ctl.options.flipX=!config.lightboard;
+ if(was!==config.lightboard){ctl.reset(now);gestures.reset();board.clear();}
+ scanViews();
  ctl.options.colour=config.colour;board.setKeep(config.keep,now);
  if(clearSeen===null)clearSeen=config.clearAt;else if(config.clearAt!==clearSeen){clearSeen=config.clearAt;board.clear();}
  if(!config.ink){ctl.reset(now);gestures.reset();board.clear();}
@@ -72,7 +75,8 @@ function drawFrame(p:Pipe){
  const {video,canvas,ctx}=p;
  if(video.readyState<2||!video.videoWidth)return;
  if(canvas.width!==video.videoWidth||canvas.height!==video.videoHeight){canvas.width=video.videoWidth;canvas.height=video.videoHeight;}
- ctx.drawImage(video,0,0,canvas.width,canvas.height);
+ if(config.lightboard){ctx.save();ctx.translate(canvas.width,0);ctx.scale(-1,1);ctx.drawImage(video,0,0,canvas.width,canvas.height);ctx.restore();}
+ else ctx.drawImage(video,0,0,canvas.width,canvas.height);
  if(!config.ink)return;
  const now=performance.now();board.prune(now);
  renderInk(ctx,canvas.width,canvas.height,board,now,link.state==='ready'||synthetic?ctl.cursor:null,config.colour);
@@ -89,6 +93,24 @@ function feed(p:Pipe){
   bitmap=>{try{link.frame!.contentWindow!.postMessage({ns:NS,t:'frame',token:link.token,bitmap},link.origin,[bitmap]);}catch{bitmap.close();link.inflight=0;}},
   ()=>{link.inflight=0;});
 }
+// The call page mirrors its preview of our track, which would undo the lightboard flip, so those elements get a counter flip composed on top of whatever transform they already have.
+const ours=new Set<MediaStreamTrack>(),flipped=new Map<HTMLVideoElement,{inline:string;applied:string}>();
+const isOurs=(v:HTMLVideoElement)=>v.srcObject instanceof MediaStream&&v.srcObject.getVideoTracks().some(t=>ours.has(t)&&t.readyState==='live');
+function unflip(v:HTMLVideoElement){const f=flipped.get(v);if(!f)return;flipped.delete(v);v.style.transform=f.inline;v.removeAttribute('data-sm-ink-flip');}
+function flip(v:HTMLVideoElement){
+ let f=flipped.get(v);
+ if(f&&v.style.transform===f.applied)return;
+ if(f)f.inline=v.style.transform;else f={inline:v.style.transform,applied:''};
+ const base=getComputedStyle(v).transform;f.applied=(base==='none'?'':base+' ')+'scaleX(-1)';
+ flipped.set(v,f);v.style.transform=f.applied;v.setAttribute('data-sm-ink-flip','1');
+}
+function scanViews(){
+ for(const v of [...flipped.keys()])if(!config.lightboard||!v.isConnected||!isOurs(v))unflip(v);
+ if(!config.lightboard||!ours.size)return;
+ for(const v of document.querySelectorAll('video'))if(isOurs(v))flip(v);
+}
+setInterval(scanViews,500);
+let scanQueued=false;new MutationObserver(()=>{if(scanQueued)return;scanQueued=true;requestAnimationFrame(()=>{scanQueued=false;scanViews();});}).observe(document,{childList:true,subtree:true});
 function teardown(p:Pipe){
  if(p.dead)return;p.dead=true;clearTimeout(p.timer);pipes.delete(p);p.video.srcObject=null;
  if(feeder===p)feeder=[...pipes].pop()??null;
@@ -111,6 +133,7 @@ async function build(stream:MediaStream){
  out.getCapabilities=()=>src.getCapabilities();
  out.applyConstraints=async c=>{try{await src.applyConstraints(c);}catch{}};
  Object.defineProperty(out,'label',{get:()=>src.label});
+ ours.add(out);const clone=out.clone.bind(out);out.clone=()=>{const c=clone();ours.add(c);return c;};
  src.addEventListener('ended',()=>{if(!p.dead){stopOut();teardown(p);out.dispatchEvent(new Event('ended'));}});
  const loop=()=>{if(p.dead)return;try{drawFrame(p);feed(p);}catch{}p.timer=window.setTimeout(loop,1000/30);};
  if(testing)((window as any).__smInk.sources??=[]).push(src);
@@ -131,5 +154,5 @@ toContent({t:'need-config'});
 if(testing)(window as any).__smInk={
  feed:(hands:any[],handedness:(string|null)[]=[])=>{synthetic=true;if(!config.ink)return;const now=performance.now();ctl.update(gestures.update(hands,now,[],handedness,aspect));publish();},
  live:()=>{synthetic=false;},
- state:()=>({strokes:board.strokes.map(s=>({n:s.points.length,first:s.points[0],last:s.points[s.points.length-1],colour:s.colour,finishedAt:s.finishedAt})),cursor:ctl.cursor,tracker:link.state,readyMs:link.readyMs,fps:link.fps,ms:link.ms,config,pipes:pipes.size,sent:link.sent}),
+ state:()=>({strokes:board.strokes.map(s=>({n:s.points.length,first:s.points[0],last:s.points[s.points.length-1],colour:s.colour,finishedAt:s.finishedAt})),cursor:ctl.cursor,flipped:flipped.size,tracker:link.state,readyMs:link.readyMs,fps:link.fps,ms:link.ms,config,pipes:pipes.size,sent:link.sent}),
 };

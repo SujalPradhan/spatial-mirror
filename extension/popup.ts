@@ -4,7 +4,7 @@ const $=<T extends HTMLElement>(id:string)=>document.getElementById(id) as T;
 let config:InkConfig=DEFAULT_CONFIG;
 const save=(patch:Partial<InkConfig>)=>{config={...config,...patch};render();return chrome.storage.session.set({config});};
 function render(){
- $<HTMLInputElement>('ink').checked=config.ink;$<HTMLInputElement>('keep').checked=config.keep;
+ $<HTMLInputElement>('ink').checked=config.ink;$<HTMLInputElement>('keep').checked=config.keep;$<HTMLInputElement>('lightboard').checked=config.lightboard;
  for(const b of $('swatches').children)b.setAttribute('aria-checked',String((b as HTMLElement).dataset.colour===config.colour));
 }
 for(const colour of COLOURS){
@@ -13,6 +13,7 @@ for(const colour of COLOURS){
 }
 $<HTMLInputElement>('ink').onchange=e=>save({ink:(e.target as HTMLInputElement).checked});
 $<HTMLInputElement>('keep').onchange=e=>save({keep:(e.target as HTMLInputElement).checked});
+$<HTMLInputElement>('lightboard').onchange=e=>save({lightboard:(e.target as HTMLInputElement).checked});
 $('clear').onclick=()=>save({clearAt:Date.now()});
 async function poll(){
  let text='Open a call tab';
