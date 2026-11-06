@@ -45,6 +45,7 @@ try{
  ok('real MediaPipe tracker ready inside extension iframe under strict CSP + trusted types',`init ${initMs} ms from first getUserMedia, ${live.fps.toFixed(1)} fps, ${live.ms.toFixed(1)} ms inference (hidden iframe, CPU delegate, 320 px frames)`);
  assert.ok(await p.evaluate(()=>{const s=stream.getVideoTracks()[0].getSettings();return s.width>0&&s.height>0;}));
  assert.equal(await p.evaluate(()=>stream.getVideoTracks()[0].applyConstraints({width:640}).then(()=>'ok',()=>'threw')),'ok');
+ assert.ok(await p.evaluate(()=>{const s=stream.getVideoTracks()[0].getSettings(),src=__smInk.sources.at(-1).getSettings();return s.deviceId===src.deviceId&&s.groupId===src.groupId&&s.width===src.width;}),'processed track reports the real camera');
  ok('getSettings and applyConstraints do not throw');
  const popup=await context.newPage();await popup.goto(`chrome-extension://${id}/popup.html`);
  const statuses=pg=>pg.evaluate(async()=>{const out=[];for(const t of await chrome.tabs.query({})){try{out.push(await chrome.tabs.sendMessage(t.id,{type:'status'}));}catch{}}return out;});

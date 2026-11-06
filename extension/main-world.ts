@@ -107,7 +107,7 @@ async function build(stream:MediaStream){
  const p:Pipe={video,canvas,ctx,src,out,timer:0,dead:false};
  const stopOut=out.stop.bind(out),getSettings=out.getSettings.bind(out);
  out.stop=()=>{stopOut();src.stop();teardown(p);};
- out.getSettings=()=>({...src.getSettings(),...getSettings()});
+ out.getSettings=()=>({...getSettings(),...src.getSettings()});out.getConstraints=()=>src.getConstraints();
  out.getCapabilities=()=>src.getCapabilities();
  out.applyConstraints=async c=>{try{await src.applyConstraints(c);}catch{}};
  Object.defineProperty(out,'label',{get:()=>src.label});
