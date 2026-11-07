@@ -23,4 +23,9 @@ export const atomObject:MirrorObject<AtomState,AtomView,AtomEngine>&{liveView:At
  readout:out=>out.electrons,
  // The orbits run by themselves, so the phone's rotor tool has nothing to set.
  idles:()=>true,
+ watch:{
+  local:true,
+  capture:engine=>({element:engine.element}),
+  apply(engine,page){const target=page.element;if(typeof target==='number'&&target!==engine.element)engine.next(target-engine.element);},
+ },
 };
