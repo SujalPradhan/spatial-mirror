@@ -16,7 +16,7 @@ try{
  await page.locator('#undo').click();await page.waitForFunction(()=>location.pathname==='/cylinder'&&window.__sectionStudio.state.solid==='cylinder');
  await page.locator('#camera-shortcut').click();
  await page.locator('.workspace-nav a[href="/mechanism"]').click();await page.waitForSelector('#stand-view canvas');
- assert.equal(await page.locator('.workspace-nav [aria-current="page"]').innerText(),'Mechanism Studio');
+ assert.equal(await page.locator('.workspace-nav [aria-current="page"]').innerText(),'Mechanism');
  await page.locator('.workspace-nav a[href="/cone"]').click();await page.waitForFunction(()=>window.__sectionStudio?.state.solid==='cone');
  for(const shape of ['cone','cylinder','cube']){
   const response=await page.goto(base+'/'+shape);assert.equal(response.status(),200);await page.waitForFunction(s=>window.__sectionStudio?.state.solid===s,shape);

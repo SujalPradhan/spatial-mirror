@@ -1,0 +1,9 @@
+.atom-page{--mirror-accent:#6fe3ff;--mirror-accent-rgb:111,227,255}
+.atom-caption{position:absolute;z-index:3;left:50%;bottom:104px;transform:translateX(-50%);margin:0;max-width:60%;text-align:center;pointer-events:none;font-size:12px;color:var(--mirror-ink)}
+.atom-caption:empty{display:none}
+.atom-tags{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.atom-tag{position:absolute;left:0;top:0;padding:3px 8px;border-radius:99px;background:rgba(5,8,12,.62);backdrop-filter:blur(6px);font-size:11px;white-space:nowrap;color:var(--mirror-ink);opacity:0;will-change:transform,opacity}
+.atom-tag[data-kind=proton]{box-shadow:inset 0 0 0 1px rgba(255,125,80,.55)}
+.atom-tag[data-kind=neutron]{box-shadow:inset 0 0 0 1px rgba(150,180,220,.55)}
+.atom-tag[data-kind=electron]{box-shadow:inset 0 0 0 1px rgba(111,227,255,.55)}
+@media(max-width:900px){.atom-caption{bottom:178px;max-width:90%}}

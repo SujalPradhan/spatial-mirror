@@ -6,9 +6,10 @@ const base=process.env.STUDIO_URL||'http://localhost:4174';
 const shots=process.env.SHOTS||'/tmp/mirror-tutorial-checks';
 const gpu=process.platform==='darwin'?['--use-angle=metal','--ignore-gpu-blocklist']:['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader'];
 const browser=await chromium.launch({channel:'chrome',headless:true,args:['--use-fake-device-for-media-stream','--use-fake-ui-for-media-stream',...gpu]});
-const counts={atp:11,perfume:11,machine:11,drivetrain:11,organ:6,grasp:10};
-const surfaces=[['atp','__atpStudio'],['perfume','__perfumeStudio'],['machine','__machineStudio'],['drivetrain','__drivetrain'],['organ','__organ'],['grasp','__grasp']];
-const fixture=pose=>posedHand(pose).map(p=>({x:.5+p.x*.12,y:.75+p.y*.12*16/9,z:p.z*.12}));
+const counts={atp:11,atom:7,perfume:11,machine:11,drivetrain:11,organ:6,grasp:10};
+const surfaces=[['atp','__atpStudio'],['atom','__atomStudio'],['perfume','__perfumeStudio'],['machine','__machineStudio'],['drivetrain','__drivetrain'],['organ','__organ'],['grasp','__grasp']];
+const fixture=(pose,x=.5)=>posedHand(pose).map(p=>({x:x+p.x*.12,y:.75+p.y*.12*16/9,z:p.z*.12}));
+const handsFor=pose=>pose==='both-pinch'||pose==='both-fist'?[fixture(pose.slice(5),.3),fixture(pose.slice(5),.7)]:[fixture(pose)];
 await mkdir(shots,{recursive:true});
 try{
  for(const [id,debug] of surfaces){
@@ -19,7 +20,7 @@ try{
   await page.route('**/hand-worker.js?*',route=>{modelStubs++;return route.fulfill({contentType:'text/javascript',body:"self.onmessage=({data})=>{if(data.type==='init')self.postMessage({type:'ready',delegate:'synthetic-test-stub'});if(data.type==='frame')data.bitmap.close();};"});});
   const current=()=>page.evaluate(key=>window[key].tutorial,debug);
   const index=async n=>page.waitForFunction(([key,n])=>window[key].tutorial?.index===n,[debug,n]);
-  const feed=pose=>page.evaluate(([key,hands])=>{clearInterval(window.testFeed);window.testFeed=setInterval(()=>window[key].hands(hands),20);},[debug,pose?[fixture(pose)]:[]]);
+  const feed=pose=>page.evaluate(([key,hands])=>{clearInterval(window.testFeed);window.testFeed=setInterval(()=>window[key].hands(hands),20);},[debug,pose?handsFor(pose):[]]);
   const quiet=async()=>{await page.evaluate(()=>clearInterval(window.testFeed));await page.waitForFunction(key=>window[key].frame.hands.length===0,debug);};
   const bounds=()=>page.evaluate(()=>Object.fromEntries(['.workspace-nav','.mirror-stage','.mirror-viewport','.mirror-mark','.mirror-gestures','.mirror-corner'].map(selector=>{const r=document.querySelector(selector).getBoundingClientRect();return [selector,[r.x,r.y,r.width,r.height]];})));
   const arrows=key=>page.evaluate(key=>{const e=new KeyboardEvent('keydown',{key,bubbles:true,cancelable:true});document.dispatchEvent(e);return e.defaultPrevented;},key);
