@@ -16,4 +16,4 @@ export function validateGrasp(value:unknown):GraspSaved {
  const norm=Math.hypot(...view.q);
  return {schema:1,tool:value.tool as GraspSaved['tool'],phase:value.phase,view:{q:view.q.map(n=>n/norm) as Quat,zoom:view.zoom,x:view.x,y:view.y},frozen:value.frozen};
 }
-export const graspDescriptor=(state:GraspSaved):MirrorDescriptor=>({chapter:0,guided:false,tool:'view',representation:'mechanism',phase:0,selected:null,zoom:state.view.zoom,title:'Grasp',motionLabel:'grip',labels:{tool:'View',play:'Close',stop:'Open'}});
+export const graspDescriptor=(state:GraspSaved):MirrorDescriptor=>({chapter:0,guided:false,tool:'view',representation:'mechanism',phase:0,selected:null,zoom:state.view.zoom,title:'Grasp',motionLabel:'grip',labels:{tool:false,play:false}});

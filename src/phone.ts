@@ -34,7 +34,9 @@ const tracking=new PhoneTracking(()=>client);
 function motionWorkspace(){return state?.workspace!=='tracking'&&!(state?.workspace==='pottery'&&state?.stage==='shape');}
 function controlsReady(){return !hosted||!motionWorkspace()||client.clock.ready&&state?.motionReady!==false;}
 function motionReady(){return hub.orientationReady;}
-function enabled(){return !!state?.enabled&&!state?.frozen&&ackScope===scope&&controlsReady();}
+let settle=0,settleKey='';
+const stateKey=(p:Packet|null)=>p?JSON.stringify({...p,phase:0}):'';
+function enabled(){return !!state?.enabled&&!state?.frozen&&ackScope===scope&&performance.now()>=settle&&controlsReady();}
 function action(action:string,value?:number){if(!state||ackScope!==scope)return;client.send({type:'action',action,...value===undefined?{}:{value}});}
 function release(){holdRequest=null;hold=false;$('#pottery-inspect-pad').classList.remove('holding');$('#clutch').classList.remove('holding');if(fine){action('fine-end');fine=false;}if(current){current.finished=true;current.interrupted=true;current=null;selectedPointer=null;}}
 function maybeAck(){if(!state||contacts.size)return;if(ackScope!==scope){ackScope=scope;client.send({type:'ack',documentId:state.documentId,context:state.context});}}
@@ -44,7 +46,7 @@ function receive(p:Packet){
  if(p.type==='pairing-busy'){tracking.update(null);release();hub.stop();notice='The controller is already open. Close its other tab, then reconnect here.';const retry=document.createElement('button');retry.textContent='Reconnect here';retry.onclick=()=>location.reload();$('#message').after(retry);update();return;}
  if(p.type==='state'){
   const next=[p.documentId,p.epoch,p.context].join(':');if(next!==scope){release();for(const item of pending.values())item.recover=true;scope=next;ackScope='';orientations.reset();clearPad();}
-  state=p;if(holdRequest&&p.motionEngagement===holdRequest.id&&!holdRequest.acked){holdRequest.acked=true;hold=true;sendFrame();}tracking.update(p);if(hub.active&&(p.workspace==='tracking'||p.workspace==='pottery'&&p.stage!=='inspect'))hub.stop();maybeAck();update();
+  state=p;if(settle&&scope+stateKey(p)!==settleKey)settle=0;if(holdRequest&&p.motionEngagement===holdRequest.id&&!holdRequest.acked){holdRequest.acked=true;hold=true;sendFrame();}tracking.update(p);if(hub.active&&(p.workspace==='tracking'||p.workspace==='pottery'&&p.stage!=='inspect'))hub.stop();maybeAck();update();
  }
  if(['waiting','disconnected'].includes(p.type)){release();for(const item of pending.values())item.recover=true;if(p.type==='waiting'&&(state?.workspace==='tracking'||state?.workspace==='atp'||state?.workspace==='pottery'&&state?.stage==='shape')){state={...state,enabled:false};tracking.pause();}else{state=null;tracking.update(null);}ackScope='';update();}
  if(p.type==='ink-rejected'){const item=pending.get(String(p.strokeId));if(item&&item.documentId===p.documentId){pending.delete(item.id);if(current===item){current=null;selectedPointer=null;}notice=String(p.reason);}return;}
@@ -60,7 +62,7 @@ const pad=$('#clutch');pad.onpointerdown=e=>{e.preventDefault();if(!enabled()||!
 for(const event of ['pointerup','pointercancel','lostpointercapture'])pad.addEventListener(event,()=>{holdRequest=null;hold=false;pad.classList.remove('holding');sendFrame();});
 $('#fine').onpointerdown=()=>{release();fine=true;};$('#fine').oninput=()=>{if(!enabled())return;fine=true;if(state?.workspace!=='shapes')action(state?.workspace==='atp'?(state.tool==='rotor'?'atp-phase':'atp-zoom'):'fine',Number($<HTMLInputElement>('#fine').value));};
 for(const event of ['pointerup','pointercancel','change','keyup','blur'])$('#fine').addEventListener(event,()=>{if(fine){const seek=atpFineSeek(state,Number($<HTMLInputElement>('#fine').value),event);if(seek&&enabled())action(seek.action,seek.value);action('fine-end');fine=false;}});
-for(const el of document.querySelectorAll<HTMLElement>('[data-action]'))el.onclick=()=>{release();action(el.dataset.action!,el.dataset.action==='atp-checkpoint'?Number(el.dataset.value):undefined);};
+for(const el of document.querySelectorAll<HTMLElement>('[data-action]'))el.onclick=()=>{release();action(el.dataset.action!,el.dataset.action==='atp-checkpoint'?Number(el.dataset.value):undefined);settle=performance.now()+2500;settleKey=scope+stateKey(state);update();setTimeout(update,2520);};
 for(const el of document.querySelectorAll<HTMLElement>('[data-part]'))el.onclick=()=>{release();action('select-'+el.dataset.part);};
 for(const el of document.querySelectorAll<HTMLElement>('[data-angle]'))el.onclick=()=>{release();action('fine',Number(el.dataset.angle));action('fine-end');};
 $('#pose-save').onclick=()=>action('save-pose');$('#freeze').onclick=()=>{release();action(state?.frozen?'resume':'freeze');};

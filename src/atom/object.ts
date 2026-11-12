@@ -19,7 +19,7 @@ export const atomObject:MirrorObject<AtomState,AtomView,AtomEngine>&{liveView:At
  createEngine:world=>new AtomEngine(world),
  state:{initial:initialAtom,validate:validateAtom},
  createAudio:()=>new AtomAudio(),
- descriptor:(state)=>({chapter:0,guided:false,tool:state.tool,representation:'structure',phase:0,selected:null,zoom:state.view.zoom}),
+ descriptor:(state)=>({chapter:0,guided:false,tool:state.tool,representation:'structure',phase:0,selected:null,zoom:state.view.zoom,title:'Atom',motionLabel:'electrons',labels:{tool:false,play:'Speed up',stop:'Stop'}}),
  readout:out=>out.electrons,
  // The orbits run by themselves, so the phone's rotor tool has nothing to set.
  idles:()=>true,
