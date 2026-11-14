@@ -9,7 +9,7 @@ import type {Packet,Quat} from '../types';
 import type {TrackingFrame} from '../tracking/model';
 // @ts-ignore Shared relay protocol is plain JavaScript.
 import {validTrackingFrame} from '../../tracking-protocol.mjs';
-import {MIRROR_ZOOM_MAX as ZOOM_MAX,MIRROR_ZOOM_MIN as ZOOM_MIN,clampPhase,type GestureFrame,type MirrorDriver,type MirrorInputSource,type MirrorInputTarget,type MirrorObject,type MirrorState,type MirrorView} from './contracts';
+import {MIRROR_ZOOM_MAX as ZOOM_MAX,MIRROR_ZOOM_MIN as ZOOM_MIN,clampPhase,type GestureFrame,type MirrorGestureId,type MirrorDriver,type MirrorInputSource,type MirrorInputTarget,type MirrorObject,type MirrorState,type MirrorView} from './contracts';
 import {mirrorGestures} from './guide';
 import {GestureTracker} from './gestures';
 import {InkMode,inkSuppressed} from './ink-mode';
@@ -17,18 +17,25 @@ import {mirrorToStage} from './projection';
 import {WatchPresenter,type Stage} from './watch';
 import {forgetRoom,presenterUrl} from './watch-link';
 import {runWatchView} from './watch-view';
+import {HOLD_SCALE,keyLabel,loadSettings,matchKey,motionReduced,saveSettings,textGate,type HoldTime} from './a11y';
 import {MirrorPhoneInput} from './input';
 import {mountMirrorPage} from './page';
 import {Tutorial,markTutorialSeen,tutorialSeen,type TutorialStep,type TutorialView} from './tutorial';
 const $=<T extends HTMLElement=HTMLElement>(id:string)=>document.querySelector<T>(id)!;
 const clamp=(n:number,min:number,max:number)=>Math.max(min,Math.min(max,n));
+const TWO_HAND:readonly MirrorGestureId[]=['both-pinch','both-fist','clap'];
+const TURN=Math.PI/12,ZOOM_STEP=1.15,TUTORIAL_HOLD_MS=600;
+const esc=(text:string)=>text.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]!);
+interface Entry {id:string;label:string;hint:string;key?:string;group:'object'|'view'|'motion';repeat?:boolean;frozenOk?:boolean;quiet?:boolean;run():void;pressed?():boolean;announce?():string}
+function safeStorage(){try{return localStorage;}catch{return null;}}
 
 /** Stages one object: page, camera, phone, relay, document and the frame loop. Returns live debug getters. */
 export async function runMirror<State extends MirrorState,View extends MirrorView,Engine extends MirrorDriver>(object:MirrorObject<State,View,Engine>){
 const {id}=object,part=<T extends HTMLElement=HTMLElement>(name:string)=>$<T>(`#${id}-${name}`);
 document.title=object.title;
-const gestures=mirrorGestures({thumbUp:object.motion.run,thumbDown:object.motion.reverse,...object.gestures},object.use);
-mountMirrorPage($('#app'),{id,copy:object.copy,about:object.about,gestures});
+const allGestures=mirrorGestures({thumbUp:object.motion.run,thumbDown:object.motion.reverse,...object.gestures},object.use);
+mountMirrorPage($('#app'),{id,copy:object.copy,about:object.about,gestures:allGestures});
+const gestures=()=>settings.oneHanded?allGestures.filter(g=>!TWO_HAND.includes(g.id)):allGestures;
 const tutorialBox=part('tutorial'),tutorialText=tutorialBox.querySelector('p')!;
 const tutorialPrevious=part<HTMLButtonElement>('tutorial-previous'),tutorialNext=part<HTMLButtonElement>('tutorial-next'),tutorialSkip=part<HTMLButtonElement>('tutorial-skip');
 let tutorial:Tutorial|null=null,tutorialClap=false,tutorialDoneAt=0,tutorialView:TutorialView|null=null;
@@ -36,7 +43,9 @@ let state:MirrorState=object.state.initial(),client:ControlClient|null=null,owns
 let drag:{id:number;x:number;y:number;view:MirrorState['view'];pluck:boolean}|null=null,lastFine=-Infinity,lastPublish=0,lastDescriptor='',spoken='';
 let owner:MirrorInputSource|null=null,before:MirrorState|null=null,history:MirrorState[]=[];
 const empty=():GestureFrame=>({at:0,hands:[],events:[]});
-const viewport=part('viewport'),view=object.createView(viewport),engine=object.createEngine(view),audio=object.createAudio(),tracker=new GestureTracker({shape:!!object.handShape});
+const settings=loadSettings(safeStorage()),stillMotion=window.matchMedia('(prefers-reduced-motion: reduce)'),reduced=()=>motionReduced(settings,stillMotion.matches);
+let paused=false;
+const viewport=part('viewport'),view=object.createView(viewport),engine=object.createEngine(view),audio=object.createAudio(),tracker=new GestureTracker({shape:!!object.handShape,hold:()=>HOLD_SCALE[settings.hold]});
 if(new URLSearchParams(location.search).has('watch'))return runWatchView(object,{code:new URLSearchParams(location.search).get('watch')!,part,view,engine,audio}) as never;
 let frame=empty(),lastHands=-Infinity,shockAt=-Infinity,inkOn=false,videoAspect=0;
 const inkMode=new InkMode(part('stage'));
@@ -62,8 +71,11 @@ function change(fn:()=>void,keep=true,allowFrozen=false){if(!owns||state.frozen&
 function undo(){change(()=>{const old=history.pop();if(old)state=old;if(!engine.idle)engine.seek(state.phase);},false,true);}
 function freeze(value:boolean){change(()=>{state.frozen=value;},true,true);part('freeze').hidden=!state.frozen;}
 function recenter(){change(()=>{state.view=object.state.initial().view;});object.recentered?.(engine);}
+function zoomBy(factor:number){change(()=>{state.view.zoom=clamp(state.view.zoom*factor,ZOOM_MIN,ZOOM_MAX);});}
+function turnBy(yaw:number,pitch:number){change(()=>{state.view.q=new Quaternion().setFromEuler(new Euler(pitch,yaw,0,'YXZ')).multiply(new Quaternion().fromArray(state.view.q)).normalize().toArray() as Quat;});}
 function endPhoneCamera(){if(!phoneCamera)return;endTutorial();phoneCamera=false;phoneCapture='';phoneSequence=0;tracker.reset();frame=empty();notice('');}
 function phoneHands(f:TrackingFrame){
+ if(!settings.tracking)return;
  const now=client?.serverTime()??null;if(now===null||f.frameAt===null||Math.abs(now-f.frameAt)>400)return;
  if(phoneCapture!==f.captureId){tracker.reset();phoneCapture=f.captureId;phoneSequence=0;}if(f.frameId<=phoneSequence)return;phoneSequence=f.frameId;phoneFrames++;
  // No phone video is shown here, so the whole phone picture maps onto the whole stage.
@@ -97,7 +109,7 @@ function receive(p:Packet){
  }
  else if(action==='atp-phase'&&Number.isFinite(n)&&n>=0&&n<=360){if(begin('phone')){lastFine=performance.now();target.phase(n);}}
  else if(action==='atp-zoom'&&Number.isFinite(n)&&n>=ZOOM_MIN&&n<=ZOOM_MAX){if(begin('phone')){lastFine=performance.now();state.view.zoom=n;}}
- else if(action==='atp-zoom-in'||action==='atp-zoom-out')change(()=>{state.view.zoom=clamp(state.view.zoom*(action==='atp-zoom-in'?1.15:1/1.15),ZOOM_MIN,ZOOM_MAX);});
+ else if(action==='atp-zoom-in'||action==='atp-zoom-out')zoomBy(action==='atp-zoom-in'?ZOOM_STEP:1/ZOOM_STEP);
 }
 // A new key: the guided schema's saved documents are not worth migrating.
 const binding=await bindDocument(object.documentKey,()=>state,v=>{release();state=object.state.validate(v);engine.seek(state.phase);playing=false;history=[];context++;part('freeze').hidden=!state.frozen;publish();});
@@ -115,28 +127,101 @@ viewport.onpointermove=e=>{if(inkOn){inkMode.pointerMove(e);return;}if(!drag){en
 viewport.onpointerleave=()=>{if(!drag)engine.hover(null);};
 function endDrag(e:PointerEvent){if(inkMode.pointerUp(e,performance.now())){if(viewport.hasPointerCapture(e.pointerId))viewport.releasePointerCapture(e.pointerId);return;}if(!drag||drag.id!==e.pointerId)return;if(drag.pluck)engine.pointerUp();else finish('mouse');drag=null;if(viewport.hasPointerCapture(e.pointerId))viewport.releasePointerCapture(e.pointerId);}
 viewport.onpointerup=endDrag;viewport.onpointercancel=endDrag;viewport.onlostpointercapture=e=>{inkMode.pointerUp(e,performance.now());if(drag?.id===e.pointerId){if(drag.pluck)engine.pointerUp();else finish('mouse');drag=null;}};
-viewport.addEventListener('wheel',e=>{e.preventDefault();change(()=>{state.view.zoom=clamp(state.view.zoom*Math.exp(-e.deltaY*.001),ZOOM_MIN,ZOOM_MAX);});},{passive:false});
-viewport.onkeydown=e=>{if(e.key===' '&&!state.frozen){e.preventDefault();void audio.start();engine.kick(e.shiftKey?-1:1);}if(e.key==='Escape')release();if(e.key==='Home')recenter();};
+viewport.addEventListener('wheel',e=>{e.preventDefault();zoomBy(Math.exp(-e.deltaY*.001));},{passive:false});
 const inkButton=part<HTMLButtonElement>('ink'),keepButton=part<HTMLButtonElement>('ink-keep'),gestureBar=part('gestures');
-let barMarkup='';
+const barHtml=(list:ReturnType<typeof mirrorGestures>)=>list.map(g=>`<li data-gesture="${g.id}"><i aria-hidden="true">${g.glyph}</i>${g.label}</li>`).join('');
+const renderBar=()=>{if(!inkOn)gestureBar.innerHTML=barHtml(gestures());};
 function setInk(on:boolean){
  if(on===inkOn)return;release();playing=false;inkOn=on;const now=performance.now();
  inkMode.set(on,now);part('stage').classList.toggle('is-inking',on);inkButton.setAttribute('aria-pressed',String(on));keepButton.hidden=!on;keepButton.setAttribute('aria-pressed','false');
- if(on){barMarkup=gestureBar.innerHTML;gestureBar.innerHTML=mirrorGestures({pinch:'Draw',thumbDown:'Undo'},['pinch','thumbDown']).map(g=>`<li data-gesture="${g.id}"><i aria-hidden="true">${g.glyph}</i>${g.label}</li>`).join('');}
- else gestureBar.innerHTML=barMarkup;
+ if(on)gestureBar.innerHTML=barHtml(mirrorGestures({pinch:'Draw',thumbDown:'Undo'},['pinch','thumbDown']));
+ else renderBar();
 }
 inkButton.onclick=()=>setInk(!inkOn);
 keepButton.onclick=()=>{const keep=!inkMode.board.keep;inkMode.setKeep(keep,performance.now());keepButton.setAttribute('aria-pressed',String(keep));};
-document.addEventListener('keydown',e=>{
- if(e.key.toLowerCase()!=='i'||e.repeat||e.altKey||e.ctrlKey||e.metaKey||e.defaultPrevented||document.querySelector('dialog[open]'))return;
- if(e.target instanceof Element&&e.target.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"]),[role="textbox"]'))return;
- setInk(!inkOn);
-});
+// Every gesture effect has a button and a key. All three reach the same engine methods, so none is a second implementation.
+const hasMotion=object.use.includes('thumbUp')||object.use.includes('thumbDown');
+const entries:Entry[]=[
+ ...(object.actions??[]).map((a):Entry=>({id:a.id,label:a.label,hint:a.hint,key:a.key,group:'object',run:()=>a.run(engine),pressed:a.pressed?()=>a.pressed!(engine):undefined})),
+ {id:'turn-left',label:'Turn left',hint:'Rotate the view to the left',key:'arrowleft',group:'view',repeat:true,run:()=>turnBy(-TURN,0)},
+ {id:'turn-right',label:'Turn right',hint:'Rotate the view to the right',key:'arrowright',group:'view',repeat:true,run:()=>turnBy(TURN,0)},
+ {id:'turn-up',label:'Turn up',hint:'Tilt the view upward',key:'arrowup',group:'view',repeat:true,run:()=>turnBy(0,-TURN)},
+ {id:'turn-down',label:'Turn down',hint:'Tilt the view downward',key:'arrowdown',group:'view',repeat:true,run:()=>turnBy(0,TURN)},
+ {id:'zoom-in',label:'Zoom in',hint:'Make the object larger',key:'+|=',group:'view',repeat:true,run:()=>zoomBy(ZOOM_STEP),announce:()=>`Zoom ${state.view.zoom.toFixed(2)} times`},
+ {id:'zoom-out',label:'Zoom out',hint:'Make the object smaller',key:'-',group:'view',repeat:true,run:()=>zoomBy(1/ZOOM_STEP),announce:()=>`Zoom ${state.view.zoom.toFixed(2)} times`},
+ {id:'reset-view',label:'Reset view',hint:'Put the view back where it started',key:'home',group:'view',run:recenter},
+ {id:'run',label:object.motion.run,hint:'Nudge the motion forward. Hold Space to keep it going',key:'space',group:'motion',repeat:true,quiet:!hasMotion,run:()=>engine.kick(1)},
+ {id:'reverse',label:object.motion.reverse,hint:'Nudge the motion backward. Hold Shift and Space to keep it going',key:'shift+space',group:'motion',repeat:true,quiet:!hasMotion,run:()=>engine.kick(-1)},
+ {id:'pause',label:'Pause motion',hint:'Stop the object moving by itself, or let it move again',key:'p',group:'motion',frozenOk:true,run:()=>{paused=!paused;if(paused)playing=false;},pressed:()=>paused},
+ {id:'freeze',label:'Freeze',hint:'Lock the view and every effect, or release it',key:'f',group:'motion',frozenOk:true,run:()=>freeze(!state.frozen),pressed:()=>state.frozen},
+ {id:'undo',label:'Undo',hint:'Step back the last change to the view',key:'u',group:'motion',frozenOk:true,run:undo},
+];
+const panel=part('actions'),panelToggle=part<HTMLButtonElement>('actions-toggle'),summaryEl=part('summary'),stageEl=part('stage'),cornerEl=stageEl.querySelector<HTMLElement>('.mirror-corner')!;
+const groupNames:[Entry['group'],string][]=[['object','Gesture actions'],['view','View'],['motion','Motion']];
+panel.innerHTML=groupNames.map(([group,name])=>{
+ const list=entries.filter(e=>e.group===group&&!e.quiet);
+ return list.length?`<div class="mirror-action-group" role="group" aria-label="${name}"><span aria-hidden="true">${name}</span>${list.map(e=>`<button data-action="${e.id}" title="${esc(e.hint+(e.key?` (${keyLabel(e.key)})`:''))}"${e.pressed?' aria-pressed="false"':''}>${esc(e.label)}</button>`).join('')}</div>`:'';
+}).join('');
+const summarise=()=>object.summary?.(engine,state as State)??`${object.copy.stageLabel}${object.copy.readoutUnit&&lastReadout!==null?`, ${lastReadout} ${object.copy.readoutUnit}`:''}${state.frozen?', frozen':''}`;
+const extraKeys:[string|undefined,string,string][]=[['i','Ink','Draw on top of the view with the mouse or a pinch'],['?','Keys','Show this list'],['escape','Let go','Drop whatever you are holding']];
+part('keys-list').innerHTML=[...entries.filter(e=>!e.quiet).map((e):[string|undefined,string,string]=>[e.key,e.label,e.hint]),...extraKeys].map(([key,label,hint])=>`<tr><td>${key?`<kbd>${esc(keyLabel(key))}</kbd>`:'Button only'}</td><th scope="row">${esc(label)}</th><td>${esc(hint)}</td></tr>`).join('');
+const buttons=new Map<string,HTMLButtonElement>();
+panel.querySelectorAll<HTMLButtonElement>('button[data-action]').forEach(b=>buttons.set(b.dataset.action!,b));
+function syncPressed(){for(const e of entries){const b=e.pressed&&buttons.get(e.id);if(!b)continue;const on=String(e.pressed!());if(b.getAttribute('aria-pressed')!==on)b.setAttribute('aria-pressed',on);}}
+let statusTimer=0;
+function runAction(actionId:string){
+ const entry=entries.find(e=>e.id===actionId);
+ if(!entry||entry.group==='object'&&!ready||state.frozen&&!entry.frozenOk)return false;
+ void audio.start();entry.run();syncPressed();
+ const text=entry.announce?.()??(entry.pressed?`${entry.label} ${entry.pressed()?'on':'off'}`:entry.group==='object'?entry.label:'');
+ if(text){spoken='';notice(text);clearTimeout(statusTimer);statusTimer=window.setTimeout(()=>{if(spoken===text)notice('');},2500);}
+ return true;
+}
+document.addEventListener('mirror-run-action',e=>{runAction(String((e as CustomEvent).detail?.id));});
+panel.onclick=e=>{const b=(e.target as Element).closest<HTMLButtonElement>('button[data-action]');if(b)runAction(b.dataset.action!);};
+const narrow=window.matchMedia('(max-width:900px)');
+// The tutorial, status line and caption sit clear of the corner tools and the gesture bar however tall those grow.
+function layout(){
+ const s=stageEl.getBoundingClientRect(),c=cornerEl.getBoundingClientRect(),b=gestureBar.getBoundingClientRect();
+ stageEl.style.setProperty('--mirror-corner-end',`${Math.round(c.bottom-s.top)}px`);
+ stageEl.style.setProperty('--mirror-bar',`${Math.round(s.bottom-b.top)}px`);
+ panel.style.maxHeight='';
+ if(panel.hidden)return;
+ const lows=[b,...(stageEl.classList.contains('is-live')?[]:[cameraButton.getBoundingClientRect()]),...[...stageEl.querySelectorAll('.mirror-status:not(:empty),[class$="-caption"]:not(:empty)')].map(e=>e.getBoundingClientRect())];
+ const p=panel.getBoundingClientRect(),floor=Math.min(...lows.map(r=>r.top)),room=narrow.matches?floor-p.top-8:p.bottom-s.top-56;
+ panel.style.maxHeight=`${Math.max(64,Math.floor(room))}px`;
+}
+new ResizeObserver(layout).observe(stageEl);new ResizeObserver(layout).observe(cornerEl);new ResizeObserver(layout).observe(gestureBar);
+panelToggle.onclick=()=>{panel.hidden=!panel.hidden;panelToggle.setAttribute('aria-expanded',String(!panel.hidden));layout();};
+panel.onkeydown=e=>{if(e.key==='Escape'&&!panel.hidden){e.stopPropagation();panel.hidden=true;panelToggle.setAttribute('aria-expanded','false');panelToggle.focus();layout();}};
+const openDialog=(name:string)=>{release();playing=false;part<HTMLDialogElement>(name).showModal();};
+const keysDialog=part<HTMLDialogElement>('keys'),settingsDialog=part<HTMLDialogElement>('settings');
+part('keys-open').onclick=()=>openDialog('keys');part('keys-close').onclick=()=>keysDialog.close();
+const trackingBox=part<HTMLInputElement>('set-tracking'),motionBox=part<HTMLInputElement>('set-motion'),holdSelect=part<HTMLSelectElement>('set-hold'),oneHandBox=part<HTMLInputElement>('set-onehand');
+const cameraButton=part<HTMLButtonElement>('camera');
+function syncTracking(){cameraButton.disabled=!settings.tracking;cameraButton.title=settings.tracking?'':'Hand tracking is off in Settings';}
+const persist=()=>saveSettings(safeStorage(),settings);
+part('settings-open').onclick=()=>{trackingBox.checked=settings.tracking;motionBox.checked=reduced();holdSelect.value=settings.hold;oneHandBox.checked=settings.oneHanded;openDialog('settings');};
+part('settings-close').onclick=()=>settingsDialog.close();
+trackingBox.onchange=()=>{settings.tracking=trackingBox.checked;persist();if(!settings.tracking){stopCamera();endPhoneCamera();}syncTracking();};
+motionBox.onchange=()=>{settings.reducedMotion=motionBox.checked;persist();};
+holdSelect.onchange=()=>{settings.hold=holdSelect.value as HoldTime;persist();};
+oneHandBox.onchange=()=>{settings.oneHanded=oneHandBox.checked;persist();renderBar();endTutorial();};
+viewport.onkeydown=e=>{
+ if(e.target!==viewport)return;
+ if(e.key==='Escape'){release();return;}
+ if(matchKey(e,'?')){e.preventDefault();if(!e.repeat)openDialog('keys');return;}
+ if(matchKey(e,'i')){e.preventDefault();if(!e.repeat)setInk(!inkOn);return;}
+ const entry=entries.find(x=>x.key&&matchKey(e,x.key));
+ if(!entry)return;
+ e.preventDefault();
+ if(!e.repeat||entry.repeat)runAction(entry.id);
+};
 let presenter:WatchPresenter|null=null;
 const shareButton=document.querySelector<HTMLButtonElement>(`#${id}-share`);
 if(shareButton){
  const dialog=document.createElement('dialog');dialog.id=`${id}-share-dialog`;dialog.className='mirror-about mirror-share';
- dialog.innerHTML=`<h2>Share view</h2><p>Anyone with this link can watch this page live. They see what you see and cannot change anything.</p><input id="${id}-share-link" readonly aria-label="Watch link" value="Creating link…"><div class="mirror-share-row"><button id="${id}-share-copy" disabled>Copy</button><output id="${id}-share-count" aria-live="polite">0 watching</output></div><p id="${id}-share-error" class="mirror-share-error" role="alert" hidden></p><div class="mirror-share-row"><button id="${id}-share-stop">Stop sharing</button><button id="${id}-share-close">Back</button></div>`;
+ dialog.setAttribute('aria-labelledby',`${id}-share-title`);dialog.innerHTML=`<h2 id="${id}-share-title">Share view</h2><p>Anyone with this link can watch this page live. They see what you see and cannot change anything.</p><input id="${id}-share-link" readonly aria-label="Watch link" value="Creating link…"><div class="mirror-share-row"><button id="${id}-share-copy" disabled>Copy</button><output id="${id}-share-count" aria-live="polite">0 watching</output></div><p id="${id}-share-error" class="mirror-share-error" role="alert" hidden></p><div class="mirror-share-row"><button id="${id}-share-stop">Stop sharing</button><button id="${id}-share-close">Back</button></div>`;
  $('#app main').append(dialog);
  const link=part<HTMLInputElement>('share-link'),copy=part<HTMLButtonElement>('share-copy'),count=part('share-count'),problem=part('share-error');
  const watchUrl=(code:string)=>`${location.origin}${location.pathname}?watch=${code}`;
@@ -157,6 +242,7 @@ function stopCamera(){endTutorial();cameraGeneration++;cameraStarting=false;prob
 function hands(raw:Landmark[][],at:number,world:Landmark[][],handedness:(string|null)[]=[],aspect=video.videoWidth/video.videoHeight||16/9){if(raw.length)lastHands=performance.now();const next=tracker.update(raw,at,world,handedness,aspect);presenter?.queue(next.events,stageOf);frame=carry(next);if(frame.events.some(e=>e.type==='clap')){shockAt=performance.now();tutorialClap=true;}}
 async function startCamera(){
  if(stream||cameraStarting){stopCamera();return;}
+ if(!settings.tracking)return;
  const generation=++cameraGeneration;cameraStarting=true;void audio.start();part('camera').textContent='Opening camera…';
  try{
   const next=await navigator.mediaDevices.getUserMedia({video:{width:{ideal:1280},height:{ideal:720}},audio:false});
@@ -172,22 +258,28 @@ async function startCamera(){
 part('camera').onclick=()=>void startCamera();
 const seenStore={getItem:(k:string)=>localStorage.getItem(k),setItem:(k:string,v:string)=>localStorage.setItem(k,v)};
 const tutorialHint=(step:TutorialStep)=>step.pose==='clap'?'Start with your hands apart, then bring them together.':step.id.startsWith('both')?'Show both hands to the camera.':'Hold your hand still, palm to the camera.';
-function startTutorial(){if(!gestures.length)return;tutorial=new Tutorial(gestures);tutorialClap=false;tutorialDoneAt=0;tutorialBox.hidden=false;renderTutorial(tutorial.current,performance.now());}
+function startTutorial(){const list=gestures();if(!list.length)return;tutorial=new Tutorial(list,{holdMs:TUTORIAL_HOLD_MS*HOLD_SCALE[settings.hold]});tutorialClap=false;tutorialDoneAt=0;tutorialBox.hidden=false;renderTutorial(tutorial.current,performance.now());}
 function firstTutorial(){if(!tutorial&&!tutorialSeen(seenStore))startTutorial();}
-function endTutorial(){tutorial=null;tutorialView=null;tutorialClap=false;tutorialDoneAt=0;tutorialBox.hidden=true;}
+function endTutorial(){shownNote='';tutorial=null;tutorialView=null;tutorialClap=false;tutorialDoneAt=0;tutorialBox.hidden=true;}
 function drawTutorial(now:number){
  if(!tutorial)return;
  // Two tracker updates can land in one render, so a clap is carried over rather than read from the latest frame.
  const v=tutorial.update(tutorialClap?{...frame,events:[...frame.events,{type:'clap',x:0,y:0}]}:frame,now);tutorialClap=false;
  renderTutorial(v,now);
 }
+let shownNote='';
 function renderTutorial(v:TutorialView,now:number){
  tutorialView=v;
  tutorialPrevious.disabled=v.index===0;tutorialNext.disabled=v.done;
  const last=v.index===v.total-1;
  tutorialNext.textContent=v.done?'Finished':v.checkpoint?'More gestures':last?'Finish':'Next';tutorialNext.setAttribute('aria-label',v.done?'Tutorial finished':v.checkpoint?'More gestures':last?'Finish tutorial':'Next tutorial step');
  tutorialSkip.textContent=v.checkpoint?'Finish':'Skip';tutorialSkip.setAttribute('aria-label',v.checkpoint?'Finish tutorial':'Skip tutorial');
- const note=(glyph:string,title:string,detail:string,progress:number)=>{tutorialBox.querySelector('i')!.textContent=glyph;tutorialText.querySelector('b')!.textContent=title;tutorialText.querySelector('small')!.textContent=detail;tutorialBox.querySelector<HTMLElement>('.mirror-tutorial-bar span')!.style.width=`${progress*100}%`;};
+ const note=(glyph:string,title:string,detail:string,progress:number)=>{
+  const key=`${glyph}|${title}|${detail}`;
+  if(key!==shownNote){shownNote=key;tutorialBox.querySelector('i')!.textContent=glyph;tutorialText.querySelector('b')!.textContent=title;tutorialText.querySelector('small')!.textContent=detail;}
+  const width=`${progress*100}%`,bar=tutorialBox.querySelector<HTMLElement>('.mirror-tutorial-bar span')!;
+  if(bar.style.width!==width)bar.style.width=width;
+ };
  if(v.done){if(!tutorialDoneAt){tutorialDoneAt=now;markTutorialSeen(seenStore);note('✓','Tutorial done','Replay it any time from Tutorial.',1);}else if(now-tutorialDoneAt>1800)endTutorial();return;}
  if(v.checkpoint){note('✓','Basics done',`${v.index} of ${v.total} gestures. ${v.total-v.index} more to try.`,v.index/v.total);return;}
  note(v.step!.glyph,v.step!.label,`${v.index+1} of ${v.total} · ${v.needsRelease?'Release the pose, then hold again or use the buttons':v.hint?tutorialHint(v.step!):'Hold the pose or use the buttons'}`,v.progress);
@@ -211,7 +303,8 @@ function lightGuide(){
  part('stage').classList.toggle('has-hands',frame.hands.length>0);
 }
 let lastTick=performance.now(),stopped=false,lastReadout:number|string|null=null;
-const stillMotion=window.matchMedia('(prefers-reduced-motion: reduce)');
+let lastSummary=-Infinity;
+const summaryGate=textGate(1500);
 function tick(now:number){
  if(stopped)return;
  const dt=Math.min(.05,(now-lastTick)/1000);lastTick=now;phone.tick(now);
@@ -220,19 +313,21 @@ function tick(now:number){
  if(now-lastHands>350&&frame.hands.length){tracker.reset();frame=empty();}
  if(ready){
   // Idle motion stops whenever the object says so or the viewer asked for less.
-  engine.idle=!!object.idles?.(state as State)&&!stillMotion.matches;
+  engine.idle=!!object.idles?.(state as State)&&!reduced()&&!paused;
   const out=engine.step(inkOn?inkSuppressed(frame):frame,dt,state.view,state.frozen);drawn=true;inkMode.update(frame,videoAspect,now);inkMode.render(now);
   if(out.holding){if(out.view&&begin('hand'))Object.assign(state.view,out.view);}else finish('hand');
   for(const sound of out.sounds)audio.play(sound);
   if(object.readout&&object.copy.readoutUnit){const value=object.readout(out as ReturnType<Engine['step']>);if(value!==lastReadout)part('count').textContent=String(lastReadout=value);}
+  if(now-lastSummary>400){lastSummary=now;const text=summaryGate(summarise(),now);if(text!==null)summaryEl.textContent=text;syncPressed();}
   if(!engine.idle&&Math.abs(engine.speed)<.01&&!owner)state.phase=angle();
   view.setPose(state.view);view.draw(out.scene,now);lightGuide();if(!inkOn)drawTutorial(now);
  }
  if(now-lastPublish>100&&lastDescriptor!==JSON.stringify(descriptor()))publish();
  requestAnimationFrame(tick);
 }
+syncTracking();renderBar();layout();
 requestAnimationFrame(tick);
 function interrupt(){release();playing=false;publish();}
 window.addEventListener('blur',interrupt);document.addEventListener('visibilitychange',()=>{if(document.hidden){interrupt();stopCamera();}});document.addEventListener('studio-before-navigation',()=>{interrupt();stopCamera();});window.addEventListener('pagehide',()=>{stopped=true;stopCamera();release();client?.close();binding.close();audio.stop();view.dispose();});
-return {engine,get tutorial(){return tutorialView;},get state(){return structuredClone(state) as State;},get playing(){return playing;},get ready(){return ready;},get owns(){return owns;},get phoneHeld(){return phone.held;},get owner(){return owner;},get context(){return context;},get frame(){return frame;},get ink(){return inkMode;},get sharing(){return presenter;},get phoneFrames(){return phoneFrames;},get phoneCamera(){return phoneCamera;},hands(raw:Landmark[][],world:Landmark[][]=[],handedness:(string|null)[]=[]){hands(raw,performance.now(),world,handedness);}};
+return {engine,runAction,get actions(){return entries.map(({id,label,key,group})=>({id,label,key,group}));},get settings(){return {...settings,reducedMotion:reduced()};},get paused(){return paused;},get summary(){return summaryEl.textContent;},get tutorial(){return tutorialView;},get state(){return structuredClone(state) as State;},get playing(){return playing;},get ready(){return ready;},get owns(){return owns;},get phoneHeld(){return phone.held;},get owner(){return owner;},get context(){return context;},get frame(){return frame;},get ink(){return inkMode;},get sharing(){return presenter;},get phoneFrames(){return phoneFrames;},get phoneCamera(){return phoneCamera;},hands(raw:Landmark[][],world:Landmark[][]=[],handedness:(string|null)[]=[]){hands(raw,performance.now(),world,handedness);}};
 }

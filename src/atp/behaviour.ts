@@ -9,7 +9,7 @@ const IDLE_SPEED=.2*REV,IDLE_TAU=.6,MOTOR_SPEED=1.5*REV,MOTOR_TAU=.35,SPEED_CAP=
 const STIR_TAU=.2;
 const ATP_LIFE=4,ATP_SPEED=.8,ATP_CAP=60,ATP_CURVE=.35,HYDROLYSIS_LIFE=1.2,HYDROLYSIS_REACH=2.4;
 const PROTON_LIFE=1,PROTON_CAP=80,PROTON_LOW=-3.4,PROTON_HIGH=-.9,PROTON_RADIUS=.55,PROTON_TURNS=2,POP_RADIUS=.45;
-const SOUND_BURST=4;
+const SOUND_BURST=4,FLASH_GAP=1/3;
 const chainKinds:[RegExp,string,string][]=[
  [/\bbeta\b/i,'β subunit','catalytic head'],[/\balpha\b/i,'α subunit','nucleotide-binding head'],[/\bgamma\b/i,'γ shaft','central rotor shaft'],
  [/\bepsilon\b/i,'ε subunit','rotor regulator'],[/\bdelta\b/i,'δ subunit','stator cap'],[/subunit b$/i,'b stalk','peripheral stalk'],
@@ -23,7 +23,7 @@ export class AtpBehaviour implements MirrorBehaviour<AtpSkin,AtpSceneExtra,AtpSo
  angle=0;omega=0;count=0;
  /** Off by default so the rotor coasts to rest; the page turns it on to keep the motor visibly running. */
  idle=false;
- private driving=0;private atpMark=0;private protonMark=0;private started=false;private spawned=0;
+ private driving=0;private sinceFlash=FLASH_GAP;private atpMark=0;private protonMark=0;private started=false;private spawned=0;
  private betas:number[]=[];private titles:{title:string;detail:string}[]=[];
  private q=new Quaternion();private v=new Vector3();
  constructor(private world:AtpWorld){}
@@ -38,10 +38,10 @@ export class AtpBehaviour implements MirrorBehaviour<AtpSkin,AtpSceneExtra,AtpSo
  drive(direction:number){this.driving=direction;}
  // Fingers drag the flywheel up to their own speed or against it, but cannot hold it back from behind.
  stir(speed:number,elapsed:number){if(speed*this.omega<0||Math.abs(speed)>Math.abs(this.omega))this.omega+=(speed-this.omega)*ease(elapsed,STIR_TAU);}
- advance(h:number,c:Context){this.started=true;this.spin(h,c);this.tally(c);}
+ advance(h:number,c:Context){this.started=true;this.sinceFlash+=h;this.spin(h,c);this.tally(c);}
  settle(h:number,c:Context){this.sparks(h,c);}
  publish(c:Context){const s=c.scene;s.rotorAngle=this.angle;s.rotorSpeed=this.omega/REV;c.sound({type:'motor',speed:this.idling?0:s.rotorSpeed});}
- reset(s:AtpScene){this.angle=this.omega=this.driving=this.count=this.atpMark=this.protonMark=0;this.started=false;s.rotorAngle=s.rotorSpeed=0;s.sparks.length=0;}
+ reset(s:AtpScene){this.angle=this.omega=this.driving=this.count=this.atpMark=this.protonMark=0;this.started=false;this.sinceFlash=FLASH_GAP;s.rotorAngle=s.rotorSpeed=0;s.sparks.length=0;}
  /** Phase inputs are 0..360 while the rotor is unbounded, so a scrub takes the shortest arc; before the first step it restores silently. */
  setRotorDegrees(n:number){
   if(!Number.isFinite(n))return;
@@ -67,7 +67,8 @@ export class AtpBehaviour implements MirrorBehaviour<AtpSkin,AtpSceneExtra,AtpSo
   this.angle+=this.omega*h;
  }
  /** The three β chains take turns, one for each 120° of the rotor. */
- private flashSite(c:Context){if(this.betas.length){const n=this.betas.length;c.glow(this.betas[(this.atpMark%n+n)%n],.9);}}
+ /** At most three flashes a second, however fast the rotor turns. */
+ private flashSite(c:Context){if(this.betas.length&&this.sinceFlash>=FLASH_GAP){this.sinceFlash=0;const n=this.betas.length;c.glow(this.betas[(this.atpMark%n+n)%n],.9);}}
  // One mark per quantity with a full-step dead band: leaving k needs floor to pass k+1 or ceil to pass k-1, so boundary jitter cannot count.
  private tally(c:Context){
   const a=this.angle/ATP_STEP,up=Math.floor(a+EPS)-this.atpMark,down=this.atpMark-Math.ceil(a-EPS);

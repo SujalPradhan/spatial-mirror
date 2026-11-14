@@ -12,7 +12,7 @@ const SPRING_W=REV*3,SPRING_DECAY=3.26,SPRING_H=1/240,PLUCK_TAU=.04,REACH=3,REAC
 const TEAR_SPAN=.35,TEAR_TAU=.05,TEAR_FALL=1.5,TEAR_CUE=.3,TEAR_REARM=.15;
 const SHOCK_LIFE=1.5,SHOCK_IMPULSE=13;
 const SLICE_EASE=.2,SLICE_TAU=.08;
-const POINTER=-1;
+const POINTER=-1,MANUAL=-1,STIR_ACTION=REV,TEAR_HOLD_TAU=.25,PLUCK_ACTION=.6;
 
 export const clamp=(n:number,min:number,max:number)=>Math.max(min,Math.min(max,n));
 export const wrap=(a:number)=>a-REV*Math.ceil((a-Math.PI)/REV);
@@ -53,7 +53,7 @@ export class MirrorEngine<Skin extends string,Extra extends object,Sound=MirrorS
  private grip:Grip|null=null;private plucks=new Map<number,Pluck>();private tear:Tear|null=null;private tearTarget=0;private fallFrom=0;private fallT=1;private tearArmed=true;
  private fields=new Map<number,MirrorField&{target:number}>();private stirs=new Map<number,Stir>();private pinching=new Set<number>();private cache=new Map<number,HandCache>();private lastPose=new Map<number,HandPose>();
  private fingerHover:WorldPoint|null=null;private mouseHover:WorldPoint|null=null;private hoverPart=-1;private hoverClock=HOVER_PERIOD;
- private sliceTarget:number|null=null;private skinIndex=0;private box:MirrorLabel={title:'',detail:'',x:0,y:0,z:0};
+ private sliceTarget:number|null=null;private pinnedSlice:number|null=null;private manualField=false;private tearHold:number|null=null;private nextPluck=0;private skinIndex=0;private box:MirrorLabel={title:'',detail:'',x:0,y:0,z:0};
  private q=new Quaternion();private q2=new Quaternion();private v=new Vector3();
  constructor(protected world:MirrorWorld,protected behaviour:MirrorBehaviour<Skin,Extra,Sound>,protected skins:readonly Skin[]){
   // The behaviour's object is the target so any accessors it defines survive.
@@ -78,10 +78,29 @@ export class MirrorEngine<Skin extends string,Extra extends object,Sound=MirrorS
  pointerMove(p:WorldPoint){const pluck=this.plucks.get(POINTER);if(pluck){pluck.x=p.x;pluck.y=p.y;pluck.z=p.z;}}
  pointerUp(){this.release(POINTER,true);}
  hover(p:WorldPoint|null){this.mouseHover=p;}
+ /** The effects of the gestures that need no hand, for buttons and keys. */
+ get liveScene():MirrorScene<Skin>&Extra{return this.scene;}
+ cycleSkin(){if(this.context.frozen)return;this.scene.skin=this.skins[this.skinIndex=(this.skinIndex+1)%this.skins.length];this.sounds.push({type:'skin'});}
+ get slicing(){return this.pinnedSlice!==null;}
+ toggleSlice(){if(this.context.frozen)return;this.pinnedSlice=this.pinnedSlice===null?this.context.view.x:null;if(this.pinnedSlice!==null)this.sounds.push({type:'slice'});}
+ get parting(){return this.manualField;}
+ toggleParting(){if(this.context.frozen)return;this.manualField=!this.manualField;}
+ get tornApart(){return this.tearHold===1||this.tearHold===null&&this.scene.explode>.5;}
+ toggleTear(){if(this.context.frozen)return;this.tearHold=this.tornApart?0:1;}
+ shock(){if(this.context.frozen)return;const v=this.context.view;this.clap({x:v.x,y:v.y,z:0});}
+ /** Jolts the next part outward and lights it, as a pluck-and-release would. */
+ pluckNext(){
+  const n=this.scene.partGlow.length;if(this.context.frozen||!n)return;
+  const i=this.nextPluck++%n,y=1-2*(i+.5)/n,r=Math.sqrt(Math.max(0,1-y*y)),t=i*GOLDEN;
+  this.velocity[i*3]+=Math.cos(t)*r*SHOCK_IMPULSE*PLUCK_ACTION;this.velocity[i*3+1]+=y*SHOCK_IMPULSE*PLUCK_ACTION;this.velocity[i*3+2]+=Math.sin(t)*r*SHOCK_IMPULSE*PLUCK_ACTION;
+  this.scene.partGlow[i]=1;this.sounds.push({type:'pluck'});
+ }
+ /** A finger's circling, without the finger. */
+ stirBy(direction:1|-1){if(!this.context.frozen)this.behaviour.stir(direction*STIR_ACTION,1);}
  reset(){
   const s=this.scene;this.lastAt=NaN;this.sinceFrame=0;this.sounds=[];
   this.grip=this.tear=null;this.plucks.clear();this.tearTarget=0;this.fallFrom=0;this.fallT=1;this.tearArmed=true;this.fields.clear();this.stirs.clear();this.pinching.clear();this.cache.clear();this.lastPose.clear();
-  this.fingerHover=this.mouseHover=null;this.hoverPart=-1;this.hoverClock=HOVER_PERIOD;this.sliceTarget=null;this.skinIndex=0;
+  this.fingerHover=this.mouseHover=null;this.hoverPart=-1;this.hoverClock=HOVER_PERIOD;this.sliceTarget=this.pinnedSlice=this.tearHold=null;this.manualField=false;this.nextPluck=0;this.skinIndex=0;
   this.hovers.clear();this.misses.length=0;if(this.aims)this.aims.length=0;
   s.explode=s.slice.amount=s.slice.x=0;s.skin=this.skins[0];s.label=null;s.partOffsets.fill(0);s.partGlow.fill(0);this.velocity.fill(0);s.fields.length=s.shocks.length=s.hands.length=0;
   this.behaviour.reset(s);
@@ -126,7 +145,7 @@ export class MirrorEngine<Skin extends string,Extra extends object,Sound=MirrorS
   for(const e of frame.events){
    if(e.type==='lost')this.lastPose.delete(e.handId);
    else if(e.type==='pose'){
-    if(e.pose==='love'&&this.lastPose.get(e.handId)!=='love'&&!this.context.frozen){s.skin=this.skins[this.skinIndex=(this.skinIndex+1)%this.skins.length];this.sounds.push({type:'skin'});}
+    if(e.pose==='love'&&this.lastPose.get(e.handId)!=='love')this.cycleSkin();
     this.lastPose.set(e.handId,e.pose);
    }else if(!this.context.frozen)this.clap(this.world.mirrorToWorld({x:e.x,y:e.y,z:0}));
   }
@@ -203,7 +222,7 @@ export class MirrorEngine<Skin extends string,Extra extends object,Sound=MirrorS
   if(pinches.length>1){
    const [a,b]=pinches,distance=Math.hypot(a.pinch.x-b.pinch.x,a.pinch.y-b.pinch.y);
    if(!this.tear||this.tear.a!==a.id||this.tear.b!==b.id){
-    this.tear={a:a.id,b:b.id,start:distance,base:this.scene.explode};this.fallT=1;
+    this.tear={a:a.id,b:b.id,start:distance,base:this.scene.explode};this.fallT=1;this.tearHold=null;
     for(const key of this.plucks.keys())if(key!==POINTER)this.release(key,false);
    }
    this.tearTarget=clamp(this.tear.base+(distance-this.tear.start)/TEAR_SPAN,0,1);
@@ -321,6 +340,10 @@ export class MirrorEngine<Skin extends string,Extra extends object,Sound=MirrorS
  }
  private easeFields(h:number){
   const list=this.scene.fields;list.length=0;
+  const view=this.context.view,manual=this.fields.get(MANUAL);
+  if(this.manualField&&!this.context.frozen){
+   if(manual){manual.x=view.x;manual.y=view.y;manual.target=1;}else this.fields.set(MANUAL,{x:view.x,y:view.y,z:0,radius:FIELD_RADIUS,strength:0,target:1});
+  }else if(manual)manual.target=0;
   for(const [id,field] of this.fields){
    const rate=h/FIELD_EASE;field.strength=field.target?Math.min(1,field.strength+rate):Math.max(0,field.strength-rate);
    if(!field.target&&field.strength<=0)this.fields.delete(id);else list.push(field);
@@ -329,12 +352,16 @@ export class MirrorEngine<Skin extends string,Extra extends object,Sound=MirrorS
  private easeExplode(h:number){
   const s=this.scene;
   if(this.tear)s.explode+=(this.tearTarget-s.explode)*ease(Math.max(h,1e-6),TEAR_TAU);
+  else if(this.tearHold!==null){
+   s.explode+=(this.tearHold-s.explode)*ease(Math.max(h,1e-6),TEAR_HOLD_TAU);
+   if(this.tearHold===0&&s.explode<.005){s.explode=0;this.tearHold=null;this.fallT=1;}
+  }
   else if(this.fallT<1){this.fallT=Math.min(1,this.fallT+h/TEAR_FALL);const t=this.fallT;s.explode=this.fallFrom*(1-t*t*(3-2*t));}
   if(s.explode>TEAR_CUE&&this.tearArmed){this.tearArmed=false;this.sounds.push({type:'tear'});}
   else if(s.explode<TEAR_REARM)this.tearArmed=true;
  }
  private easeSlice(h:number){
-  const slice=this.scene.slice,target=this.sliceTarget;
+  const slice=this.scene.slice,target=this.sliceTarget??(this.context.frozen?null:this.pinnedSlice);
   if(target===null){slice.amount=Math.max(0,slice.amount-h/SLICE_EASE);return;}
   slice.x=slice.amount>0?slice.x+(target-slice.x)*ease(Math.max(h,1e-6),SLICE_TAU):target;
   slice.amount=Math.min(1,slice.amount+h/SLICE_EASE);

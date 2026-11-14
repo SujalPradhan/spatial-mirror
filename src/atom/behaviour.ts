@@ -6,7 +6,7 @@ import {DEFAULT_ELEMENT,describeAtom,elements,nucleons,outermostFree,shellOfElec
 const SPIN=.22,TUMBLE=.5,RATE_UP=3,RATE_BACK=-1.5,RATE_TAU=.35,KICK=1.2,RATE_MAX=4,RATE_MIN=-3;
 const LIFT=.6,BOB=.06,GRACE=.3,FOLLOW_TAU=.07,FLY_TAU=.16,BACK_TAU=.18,GONE=.015,ARRIVED=.985,TAKEN_AT=.5;
 const FADE_OUT=.22,FADE_IN=.5,TEAR_BLOCK=.2;
-const PALM=[0,5,9,13,17];
+const PALM=[0,5,9,13,17],MANUAL=-1;
 type Context=MirrorContext<AtomSkin,AtomSceneExtra,AtomSound>;
 interface Take extends AtomTaken {lastOpen:number;releasing:boolean}
 
@@ -22,6 +22,8 @@ export class AtomBehaviour implements MirrorBehaviour<AtomSkin,AtomSceneExtra,At
  element=DEFAULT_ELEMENT;
  /** Off when the viewer asked for less motion: nothing turns by itself, though a thumb still drives the orbits. */
  idle=true;
+ /** A taken electron held without a hand, for buttons and keys. */
+ manualTake=false;
  private rate=1;private driving=0;private clock=0;private pending:number|null=null;
  private takes=new Map<number,Take>();private seen=new WeakSet<object>();private parts:Nucleon[]=[];
  constructor(){this.parts=this.build();}
@@ -60,7 +62,7 @@ export class AtomBehaviour implements MirrorBehaviour<AtomSkin,AtomSceneExtra,At
   s.taken.length=0;for(const t of this.takes.values())s.taken.push(t);
  }
  reset(s:MirrorScene<AtomSkin>&AtomSceneExtra){
-  this.rate=1;this.driving=0;this.pending=null;this.takes.clear();this.setElement(DEFAULT_ELEMENT,s);s.spin=s.tumble=0;s.fade=1;s.taken.length=0;
+  this.rate=1;this.driving=0;this.pending=null;this.manualTake=false;this.takes.clear();this.setElement(DEFAULT_ELEMENT,s);s.spin=s.tumble=0;s.fade=1;s.taken.length=0;
  }
  private setElement(index:number,s:AtomSceneExtra){
   this.element=index;this.takes.clear();this.parts=this.build();s.element=index;s.angles=startAngles(elements[index].z);
@@ -80,6 +82,7 @@ export class AtomBehaviour implements MirrorBehaviour<AtomSkin,AtomSceneExtra,At
  private hands(h:number,c:Context){
   const s=c.scene,open=new Map<number,{x:number;y:number;z:number}>(),z=elements[this.element].z;
   const allowed=!c.frozen&&this.pending===null&&s.fade>=1&&s.explode<TEAR_BLOCK;
+  if(allowed&&this.manualTake)open.set(MANUAL,{x:c.view.x+2,y:c.view.y+.6,z:0});
   if(allowed)for(const hand of s.hands){
    if(hand.pose!=='open'||hand.joints.length<21)continue;
    const p={x:0,y:0,z:0};for(const i of PALM){p.x+=hand.joints[i].x/PALM.length;p.y+=hand.joints[i].y/PALM.length;p.z+=hand.joints[i].z/PALM.length;}

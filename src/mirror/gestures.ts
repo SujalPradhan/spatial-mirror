@@ -66,8 +66,8 @@ interface Track {id:number;side:HandSide;pose:HandPose;candidate:HandPose;since:
 
 export class GestureTracker {
  private tracks:Track[]=[];private nextId=1;private previous:{gap:number;at:number;x:number;y:number}|null=null;private armed=false;private lastClap=-Infinity;
- /** shape: also hand each tracked hand's raw landmarks on, for an object that reads joint angles. Off, frames are exactly as before. */
- constructor(private readonly options:{shape?:boolean}={}){}
+ /** shape: also hand each tracked hand's raw landmarks on, for an object that reads joint angles. Off, frames are exactly as before. hold scales every time a pose must hold before it counts. */
+ constructor(private readonly options:{shape?:boolean;hold?:()=>number}={}){}
  reset(){this.tracks=[];this.previous=null;this.armed=false;}
  update(hands:Landmark[][],at:number,world:Landmark[][]=[],handedness:(string|null)[]=[],aspect=1):GestureFrame {
   const events:GestureEvent[]=[],scale=Math.max(.1,aspect),inputs=hands.map((raw,index)=>({raw,index})).filter(({raw})=>valid(raw)).map(({raw,index})=>({points:raw.map(toMirror),metric:valid(world[index])?world[index]:raw.map(p=>({...p,y:p.y/scale})),image:raw.map(p=>({...p,y:p.y/scale})),side:sideFromLabel(handedness[index]),world:valid(world[index])}));
@@ -96,7 +96,7 @@ export class GestureTracker {
   const limit=track.pose==='pinch'?PINCH_OFF:PINCH_ON,thumb=track.pose==='thumbUp'||track.pose==='thumbDown',metric=classifyPose(input.metric,limit,thumb),raw=metric==='none'?classifyPose(input.image,limit,thumb):metric;
   if(raw!==track.candidate){track.candidate=raw;track.since=at;}
   // One unclear frame must not drop a held gesture.
-  const wait=raw==='none'?NONE_MS:track.pose==='pinch'?UNPINCH_MS:thumb&&raw==='fist'?UNTHUMB_MS:raw==='pinch'?PINCH_MS:CONFIRM_MS;
+  const wait=(raw==='none'?NONE_MS:track.pose==='pinch'?UNPINCH_MS:thumb&&raw==='fist'?UNTHUMB_MS:raw==='pinch'?PINCH_MS:CONFIRM_MS)*(this.options.hold?.()??1);
   if(raw!==track.pose&&at-track.since>=wait){track.pose=raw;track.poseAge=0;events.push({type:'pose',handId:track.id,pose:raw});}
   else track.poseAge++;
  }
