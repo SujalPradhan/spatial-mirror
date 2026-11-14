@@ -69,7 +69,8 @@
 @media(prefers-reduced-motion:reduce){.mirror-page *{transition:none!important}.mirror-loading:before{animation:none}}
 .mirror-page .mirror-keys{max-width:640px}
 .mirror-page .mirror-keys table{width:100%;border-collapse:collapse;font-size:12.5px}
-.mirror-page .mirror-keys th,.mirror-page .mirror-keys td{padding:5px 8px 5px 0;text-align:left;vertical-align:top;font-weight:400;color:var(--mirror-dim);border-bottom:1px solid rgba(255,255,255,.07)}
+.mirror-page .mirror-about h2:focus{outline:none}
+.mirror-page .mirror-keys th,.mirror-page .mirror-keys td{padding:3px 8px 3px 0;text-align:left;vertical-align:top;font-weight:400;color:var(--mirror-dim);border-bottom:1px solid rgba(255,255,255,.07)}
 .mirror-page .mirror-keys thead th{color:var(--mirror-ink)}
 .mirror-page .mirror-keys tbody th{color:var(--mirror-ink)}
 .mirror-page .mirror-keys kbd{display:inline-block;padding:1px 6px;border:1px solid rgba(255,255,255,.25);border-radius:4px;font:12px ui-monospace,monospace;color:var(--mirror-ink);white-space:nowrap}

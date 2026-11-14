@@ -194,7 +194,7 @@ function layout(){
 new ResizeObserver(layout).observe(stageEl);new ResizeObserver(layout).observe(cornerEl);new ResizeObserver(layout).observe(gestureBar);
 panelToggle.onclick=()=>{panel.hidden=!panel.hidden;panelToggle.setAttribute('aria-expanded',String(!panel.hidden));layout();};
 panel.onkeydown=e=>{if(e.key==='Escape'&&!panel.hidden){e.stopPropagation();panel.hidden=true;panelToggle.setAttribute('aria-expanded','false');panelToggle.focus();layout();}};
-const openDialog=(name:string)=>{release();playing=false;part<HTMLDialogElement>(name).showModal();};
+const openDialog=(name:string)=>{release();playing=false;const dialog=part<HTMLDialogElement>(name),heading=dialog.querySelector<HTMLElement>('h2')!;dialog.showModal();heading.tabIndex=-1;heading.focus();dialog.scrollTop=0;};
 const keysDialog=part<HTMLDialogElement>('keys'),settingsDialog=part<HTMLDialogElement>('settings');
 part('keys-open').onclick=()=>openDialog('keys');part('keys-close').onclick=()=>keysDialog.close();
 const trackingBox=part<HTMLInputElement>('set-tracking'),motionBox=part<HTMLInputElement>('set-motion'),holdSelect=part<HTMLSelectElement>('set-hold'),oneHandBox=part<HTMLInputElement>('set-onehand');
