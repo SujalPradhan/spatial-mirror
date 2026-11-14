@@ -105,6 +105,8 @@ try{
      if(t.checkpoint){assert.match(await api.text(`#${id}-tutorial`),/Basics done/);await page.screenshot({path:`${shots}/${id}-checkpoint.png`});await page.locator(`#${id}-tutorial-next`).click();}
      await api.quiet();
     }
+    // The fist step pans the model by however far the hand moved, so aimed steps start from the centred view.
+    if(step.anchor==='pinch'&&step.poses.length===1){await page.locator(`#${id}-recenter`).click();await page.waitForTimeout(300);}
     assert.equal((await api.tutorial()).id,step.id);
     await feedSpec(api,step);
     if(!step.poseOnly&&step.holds===false){
