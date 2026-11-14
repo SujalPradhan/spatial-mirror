@@ -170,5 +170,5 @@ test('goggles, skipped steps, a poured fill level and misreads feed the scoring'
  b.skip('indicator');b.skip('indicator');b.skip('safety');
  const skipped=b.report().issues.find(i=>i.id==='skipped')!;assert.equal(skipped.cost,2,'a repeated skip counts once, and safety has its own issue');
  b.misreads=2;const r=b.report();assert.equal(r.readings,6);assert.equal(r.wrongReadings,2);
- assert.equal(new Bench(14).fill(9)&&0,0);const over=new Bench(14);over.fill(9);assert.ok(over.reading<=2,'a poured level is clamped to the top of the scale');
+ const over=new Bench(14);over.fill(9);assert.ok(over.reading<=2,'a poured level is clamped to the top of the scale');
 });
