@@ -57,4 +57,4 @@
 .mirror-page .wt-pop-actions .wt-try{border-color:rgba(var(--mirror-accent-rgb),.6);background:rgba(var(--mirror-accent-rgb),.16);color:var(--mirror-ink)}
 .mirror-page .wt-pop-actions button:hover{background:rgba(255,255,255,.12);color:var(--mirror-ink)}
 .mirror-watching .wt-pop{display:none!important}
-@media(max-width:900px){.mirror-page .mirror-tutorial{top:150px}}
+@media(max-width:520px){.mirror-page .mirror-tutorial{top:150px}}
