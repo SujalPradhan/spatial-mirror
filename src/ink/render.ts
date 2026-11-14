@@ -38,11 +38,12 @@ export function renderChip(ctx:CanvasRenderingContext2D,w:number,h:number,at:{x:
 }
 
 export const GUIDE_LINES:[string,string][]=[['🤏','Draw'],['🤏🤏','Zoom slide'],['✋','Swipe slides'],['✌️','Colour'],['👎','Undo'],['🤟','Background']];
+export const SCREEN_GUIDE_LINES:[string,string][]=[['🤏','Draw'],['🤏🤏','Zoom screen'],['✌️','Colour'],['👎','Undo'],['🤟','Background']];
 /** A compact translucent legend in the bottom-left corner, at most about a fifth of the frame wide. */
-export function renderGuide(ctx:CanvasRenderingContext2D,w:number,h:number){
- const size=Math.max(10,w*.0165),pad=size*.7,row=size*1.45,boxW=Math.min(w*.2,size*11),boxH=pad*2+row*GUIDE_LINES.length;
- ctx.save();ctx.globalAlpha=.82;ctx.beginPath();ctx.roundRect(w*.015,h-boxH-h*.02,boxW,boxH,size*.7);ctx.fillStyle='rgba(16,18,26,.72)';ctx.fill();
+export function renderGuide(ctx:CanvasRenderingContext2D,w:number,h:number,lines:[string,string][]=GUIDE_LINES,right=false){
+ const size=Math.max(10,w*.0165),pad=size*.7,row=size*1.45,boxW=Math.min(w*.2,size*11),boxH=pad*2+row*lines.length,x=right?w*.985-boxW:w*.015;
+ ctx.save();ctx.globalAlpha=.82;ctx.beginPath();ctx.roundRect(x,h-boxH-h*.02,boxW,boxH,size*.7);ctx.fillStyle='rgba(16,18,26,.72)';ctx.fill();
  ctx.globalAlpha=1;ctx.font=`500 ${size}px system-ui,sans-serif`;ctx.textBaseline='middle';ctx.fillStyle='#fff';
- GUIDE_LINES.forEach(([e,t],i)=>{const y=h-boxH-h*.02+pad+row*(i+.5);ctx.textAlign='left';ctx.fillText(e,w*.015+pad,y);ctx.fillText(t,w*.015+pad+size*3.2,y);});
+ lines.forEach(([e,t],i)=>{const y=h-boxH-h*.02+pad+row*(i+.5);ctx.textAlign='left';ctx.fillText(e,x+pad,y);ctx.fillText(t,x+pad+size*3.2,y);});
  ctx.restore();
 }
