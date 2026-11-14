@@ -29,8 +29,8 @@ bar.querySelector<HTMLElement>('#save-timings')!.onclick=()=>{
 };
 
 if(!webcamOnly){
- const dialog=document.createElement('dialog');dialog.id='hosted-pair-dialog';
- dialog.innerHTML='<button id="pair-close" aria-label="Close">×</button><h2>Scan to connect</h2><p>Scan this QR code with your phone’s camera. It opens the controller and connects automatically.</p><canvas id="pairing-qr" width="260" height="260" aria-label="Scan this QR code to connect your phone" hidden></canvas><details id="pairing-fallback"><summary>Can’t scan?</summary><p>Open <a id="controller-address" href="/phone" target="_blank" rel="noopener"></a> and enter:</p><output id="pairing-code">—</output></details><p id="pairing-message" role="status"></p><div><button id="new-pair-code">Create code</button><button id="end-pairing" hidden>Disconnect phone</button></div>';
+ const dialog=document.createElement('dialog');dialog.id='hosted-pair-dialog';dialog.setAttribute('aria-labelledby','hosted-pair-title');
+ dialog.innerHTML='<button id="pair-close" aria-label="Close">×</button><h2 id="hosted-pair-title">Scan to connect</h2><p>Scan this QR code with your phone’s camera. It opens the controller and connects automatically.</p><canvas id="pairing-qr" width="260" height="260" aria-label="Scan this QR code to connect your phone" hidden></canvas><details id="pairing-fallback"><summary>Can’t scan?</summary><p>Open <a id="controller-address" href="/phone" target="_blank" rel="noopener"></a> and enter:</p><output id="pairing-code">—</output></details><p id="pairing-message" role="status"></p><div><button id="new-pair-code">Create code</button><button id="end-pairing" hidden>Disconnect phone</button></div>';
  document.body.append(dialog);dialog.querySelector('#controller-address')!.textContent=location.host+'/phone';
  let connected=pairingStatus.connected,busy=false,problem='',qrKey='';
  const qr=dialog.querySelector<HTMLCanvasElement>('#pairing-qr')!;
