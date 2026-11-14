@@ -81,3 +81,4 @@
  .titration-page .mirror-enter{left:12px;bottom:46px;transform:none}
 }
 @media(prefers-reduced-motion:reduce){.ti-sheet *{transition:none!important;scroll-behavior:auto!important}}
+.titration-page .mirror-gestures{padding:4px 8px;border-radius:12px;background:rgba(8,11,18,.85)}
