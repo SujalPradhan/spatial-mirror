@@ -1,0 +1,60 @@
+.mirror-page .mirror-tutorial{grid-template-columns:48px 1fr;align-items:start;width:min(360px,calc(100% - 24px));min-width:0}
+.mirror-page .mirror-tutorial>i{display:grid;place-items:center;width:48px;height:48px;border-radius:9px;background:rgba(255,255,255,.06);overflow:hidden}
+.mirror-page .mirror-tutorial p{min-width:0}
+.wt-meta{display:flex;align-items:center;gap:8px;margin-bottom:2px;font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:var(--mirror-dim)}
+.wt-phase{padding:1px 7px;border-radius:99px;background:rgba(var(--mirror-accent-rgb),.2);color:var(--mirror-ink);letter-spacing:.03em}
+.wt-how{display:block;margin:2px 0 4px;font-size:12.5px;line-height:1.45;color:var(--mirror-ink)}
+.wt-feedback{display:block;font-size:11px;line-height:1.45;color:var(--mirror-accent)}
+.wt-feedback:empty{display:none}
+.mirror-tutorial-nav button[hidden]{display:none}
+
+.wt-demo{position:relative;display:flex;align-items:center;justify-content:center;gap:2px;width:100%;height:100%;font-size:22px;line-height:1}
+.wt-demo i,.wt-pop .wt-demo i{font-style:normal;font-size:inherit;line-height:1;display:block}
+.wt-hand{display:block;animation:wt-fist 1.6s ease-in-out infinite}
+.wt-demo-open .wt-hand{animation-name:wt-open}
+.wt-demo-pinch .wt-hand{animation-name:wt-pull}
+.wt-demo-point .wt-hand{animation:wt-orbit 1.6s linear infinite}
+.wt-demo-point .wt-hand i{transform:translateX(8px)}
+.wt-demo-victory .wt-hand{animation-name:wt-snip}
+.wt-demo-thumbUp .wt-hand{animation-name:wt-up}
+.wt-demo-thumbDown .wt-hand{animation-name:wt-down}
+.wt-demo-love .wt-hand{animation-name:wt-snip}
+.wt-demo-both-pinch .wt-hand-0,.wt-demo-both-fist .wt-hand-0{animation-name:wt-left}
+.wt-demo-both-pinch .wt-hand-1,.wt-demo-both-fist .wt-hand-1{animation-name:wt-right}
+.wt-demo-clap .wt-hand-0{animation:wt-clap-left 1.3s ease-in infinite}
+.wt-demo-clap .wt-hand-1{animation:wt-clap-right 1.3s ease-in infinite}
+.wt-demo-clap .wt-hand-1 i{transform:scaleX(-1)}
+@keyframes wt-fist{0%,100%{transform:translateX(-5px) rotate(-8deg)}50%{transform:translateX(5px) rotate(8deg)}}
+@keyframes wt-open{0%,100%{transform:scale(.85)}50%{transform:scale(1.2)}}
+@keyframes wt-pull{0%,25%{transform:translate(0,0)}75%,100%{transform:translate(9px,-7px)}}
+@keyframes wt-orbit{to{transform:rotate(360deg)}}
+@keyframes wt-snip{0%,100%{transform:rotate(-12deg)}50%{transform:rotate(12deg)}}
+@keyframes wt-up{0%,100%{transform:translateY(3px)}50%{transform:translateY(-4px)}}
+@keyframes wt-down{0%,100%{transform:translateY(-3px)}50%{transform:translateY(4px)}}
+@keyframes wt-left{0%,20%{transform:translateX(0)}80%,100%{transform:translateX(-7px)}}
+@keyframes wt-right{0%,20%{transform:translateX(0)}80%,100%{transform:translateX(7px)}}
+@keyframes wt-clap-left{0%{transform:translateX(-9px)}55%,100%{transform:translateX(1px)}}
+@keyframes wt-clap-right{0%{transform:translateX(9px)}55%,100%{transform:translateX(-1px)}}
+@media(prefers-reduced-motion:reduce){.wt-hand,.wt-demo-point .wt-hand,.wt-demo-clap .wt-hand-0,.wt-demo-clap .wt-hand-1{animation:none!important}}
+
+.mirror-gestures button{pointer-events:auto;display:flex;flex-direction:column;align-items:center;gap:3px;width:100%;padding:0;border:0;background:none;font:inherit;color:inherit;letter-spacing:inherit;cursor:pointer}
+.mirror-gestures li:hover{background:rgba(255,255,255,.08);color:var(--mirror-ink)}
+.mirror-gestures li:has(button:focus-visible){outline:2px solid var(--mirror-accent);outline-offset:1px}
+.mirror-gestures li:has(button[aria-expanded=true]){background:rgba(255,255,255,.12);color:var(--mirror-ink)}
+.mirror-gestures li button:focus-visible{outline:0}
+.mirror-stage.is-inking .mirror-gestures button{cursor:default}
+.mirror-gestures li{border-radius:7px}
+
+.wt-pop{position:absolute;z-index:7;transform:translateX(-50%);width:min(300px,calc(100% - 16px));display:grid;grid-template-columns:56px 1fr;gap:6px 12px;padding:12px;border:1px solid rgba(255,255,255,.14);border-radius:10px;background:rgba(5,8,12,.9);backdrop-filter:blur(12px);box-shadow:0 8px 30px rgba(0,0,0,.4)}
+.wt-pop-demo{display:grid;place-items:center;width:56px;height:56px;border-radius:9px;background:rgba(255,255,255,.06);overflow:hidden}
+.wt-pop-demo .wt-demo{font-size:26px}
+.wt-pop-text{min-width:0}
+.wt-pop b{display:block;font:600 14px/1.3 'Manrope',system-ui,sans-serif}
+.wt-pop p{margin:2px 0 0;font-size:12px;line-height:1.45;color:var(--mirror-dim)}
+.wt-pop .wt-pop-how{color:var(--mirror-ink)}
+.wt-pop-actions{grid-column:1/-1;display:flex;justify-content:flex-end;gap:6px}
+.mirror-page .wt-pop-actions button{padding:6px 12px;border:1px solid rgba(255,255,255,.18);border-radius:6px;background:none;font-size:11px;color:var(--mirror-dim)}
+.mirror-page .wt-pop-actions .wt-try{border-color:rgba(var(--mirror-accent-rgb),.6);background:rgba(var(--mirror-accent-rgb),.16);color:var(--mirror-ink)}
+.mirror-page .wt-pop-actions button:hover{background:rgba(255,255,255,.12);color:var(--mirror-ink)}
+.mirror-watching .wt-pop{display:none!important}
+@media(max-width:900px){.mirror-page .mirror-tutorial{top:150px}}

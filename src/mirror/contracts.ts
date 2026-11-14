@@ -1,4 +1,5 @@
 import type {Quat} from '../types';
+import type {MirrorWalkthroughStep} from './walkthrough-steps';
 
 export interface MirrorViewState {q:Quat;zoom:number;x:number;y:number}
 export interface MirrorViewPatch {q?:Quat;x?:number;y?:number;zoom?:number}
@@ -126,6 +127,8 @@ export interface MirrorObject<State extends MirrorState=MirrorState,View extends
  gestures?:Partial<Record<string,string>>;
  /** The gestures that do something here, most important first. The guide bar and the tutorial show only these, in this order. */
  use:readonly MirrorGestureId[];
+ /** What each gesture does here in plain words, and the effect that shows the viewer got it. A gesture without an entry is walked through by pose alone. */
+ walkthrough?:readonly MirrorWalkthroughStep<Engine>[];
  copy:MirrorCopy;about:MirrorAbout;
  createView(host:HTMLElement):View;createEngine(world:View):Engine;
  state:{initial():State;validate(value:unknown):State};
