@@ -83,7 +83,7 @@ function flask(b:Bench,id:'phenolphthalein'|'methyl-orange'|'universal'='phenolp
  b.pipette();b.addIndicator(id);b.recordInitial(Math.round(b.reading*20)/20);
 }
 function wellRun(seed:number,opts:{rinse?:boolean;bubble?:boolean;indicator?:'phenolphthalein'|'methyl-orange'|'universal'}={}){
- const b=new Bench(seed);if(opts.rinse!==false)b.rinse();b.fill();if(opts.bubble!==false)b.clearBubble();
+ const b=new Bench(seed);b.wearGoggles();if(opts.rinse!==false)b.rinse();b.fill();if(opts.bubble!==false)b.clearBubble();
  for(let i=0;i<3;i++){
   if(b.reading>20)b.fill();
   flask(b,opts.indicator);titrate(b);
@@ -161,4 +161,14 @@ test('the step list marks skipped steps without announcing them',()=>{
  const b=new Bench(1);assert.equal(b.procedure()[0].state,'current');b.fill();
  assert.equal(b.procedure()[0].state,'skipped');assert.equal(b.procedure()[1].state,'done');assert.equal(b.procedure()[2].state,'current');
  flask(b);assert.equal(b.procedure()[2].state,'skipped');assert.equal(b.procedure()[5].state,'current');
+});
+
+test('goggles, skipped steps, a poured fill level and misreads feed the scoring',()=>{
+ const b=new Bench(14);b.rinse();b.fill(.4);assert.equal(b.reading,.4,'a level the student poured to is kept');
+ b.clearBubble();assert.ok(b.report().issues.some(i=>i.id==='goggles'));
+ b.wearGoggles();assert.ok(!b.report().issues.some(i=>i.id==='goggles'));
+ b.skip('indicator');b.skip('indicator');b.skip('safety');
+ const skipped=b.report().issues.find(i=>i.id==='skipped')!;assert.equal(skipped.cost,2,'a repeated skip counts once, and safety has its own issue');
+ b.misreads=2;const r=b.report();assert.equal(r.readings,6);assert.equal(r.wrongReadings,2);
+ assert.equal(new Bench(14).fill(9)&&0,0);const over=new Bench(14);over.fill(9);assert.ok(over.reading<=2,'a poured level is clamped to the top of the scale');
 });

@@ -31,6 +31,7 @@ export const accuracyPoints=(error:number)=>{const e=Math.abs(error);return e<=1
 export class Bench {
  readonly acid:number;
  private readonly random:()=>number;
+ goggles=false;misreads=0;skipped:string[]=[];
  rinsed=false;filled=false;bubbleCleared=false;bubbleLeft=0;titrantConc=BASE_CONC;reading=0;
  /** Stopcock opening, 0 shut to 1 fully open. */
  tap=0;swirlInput=0;swirlTimer=0;
@@ -42,19 +43,24 @@ export class Bench {
  constructor(readonly seed:number){this.random=mulberry32(seed^0x5bd1e995);this.acid=randomAcidConc(seed);}
 
  // ---- Preparation.
+ wearGoggles():string{this.goggles=true;return 'Goggles on.';}
+ /** A step the student chose to skip; it is done for them and costs a little technique. */
+ skip(id:string){if(!this.skipped.includes(id))this.skipped.push(id);}
  rinse():string{
   if(this.filled)return 'The burette is already filled. Rinse it before filling next time.';
   if(this.rinsed)return 'The burette is already rinsed with sodium hydroxide.';
   this.rinsed=true;return 'Burette rinsed with a little sodium hydroxide.';
  }
- fill():string{
+ /** level: the reading the student filled to, when they poured it themselves. */
+ fill(level?:number):string{
+  const start=()=>{const random=this.nextStart();return level===undefined?random:Math.round(Math.max(0,Math.min(2,level))*20)/20;};
   if(!this.filled){
    this.filled=true;this.titrantConc=this.rinsed?BASE_CONC:BASE_CONC*UNRINSED_FACTOR;
-   this.bubbleLeft=BUBBLE_VOLUME;this.reading=this.nextStart();
+   this.bubbleLeft=BUBBLE_VOLUME;this.reading=start();
    return 'Burette filled with 0.100 mol/dm3 sodium hydroxide. Look at the tip.';
   }
   if(this.flask&&!this.flask.done)return 'Finish this titration before topping up the burette.';
-  this.reading=this.nextStart();return 'Burette topped up. Read it again.';
+  this.reading=start();return 'Burette topped up. Read it again.';
  }
  private nextStart(){return Math.round((.05+this.random()*.9)*100)/100;}
  get bubble(){return this.bubbleLeft>0;}
@@ -189,6 +195,7 @@ export class Bench {
 
  report():Report{
   const issues:Issue[]=[],runs=this.runs;
+  if(!this.goggles)issues.push({id:'goggles',cost:4,affects:false,text:'You did not put your goggles on. Sodium hydroxide and acid both burn eyes, so goggles go on before anything is opened.'});
   if(!this.rinsed)issues.push({id:'rinse',cost:8,affects:true,text:'You did not rinse the burette with sodium hydroxide. Water left in it thinned the titrant by about 2%, so each titre came out about 2% too large and the acid looked about 2% stronger than it is.'});
   const bubbleRun=runs.find(r=>r.bubbleError>0);
   if(bubbleRun)issues.push({id:'bubble',cost:6,affects:bubbleRun.kind==='accurate',text:`The air bubble was still in the tip, so your ${bubbleRun.kind} titre read ${fmt(bubbleRun.bubbleError,1)} cm3 too high. Run titrant through the tip before you start.`});
@@ -197,12 +204,14 @@ export class Bench {
   if(over.length)issues.push({id:'overshoot',cost:4,affects:over.some(r=>r.kind==='accurate'),text:`You overshot the end point by more than two drops in ${over.length===1?'run '+(runs.indexOf(over[0])+1):over.length+' runs'} (up to ${fmt(Math.max(...over.map(r=>r.excess)))} cm3). Slow to drop by drop near the colour change.`});
   const still=runs.filter(r=>!r.swirled);
   if(still.length)issues.push({id:'swirl',cost:4,affects:still.some(r=>r.kind==='accurate'),text:`You hardly swirled the flask in ${still.length===1?'run '+(runs.indexOf(still[0])+1):still.length+' runs'}. Unmixed base makes a local pink patch that hides how close you are.`});
+  const skippedOwn=this.skipped.filter(id=>!['safety','rinse','bubble'].includes(id));
+  if(skippedOwn.length)issues.push({id:'skipped',cost:2*skippedOwn.length,affects:false,text:`You skipped ${skippedOwn.length===1?'a step':skippedOwn.length+' steps'}, so the bench did ${skippedOwn.length===1?'it':'them'} for you. Doing each step yourself is the practice.`});
   if(this.mean===null)issues.push({id:'concordance',cost:4,affects:true,text:'No two accurate titres agreed within 0.10 cm3, so there is no reliable mean.'});
   const wrongReadings=runs.reduce((s,r)=>s+(r.initialWrong?1:0)+(r.finalWrong?1:0),0);
-  const technique=Math.max(0,TECHNIQUE_MAX-issues.reduce((s,i)=>s+i.cost,0)),readings=Math.max(0,READINGS_MAX-2*wrongReadings);
+  const technique=Math.max(0,TECHNIQUE_MAX-issues.reduce((s,i)=>s+i.cost,0)),readings=Math.max(0,READINGS_MAX-2*(wrongReadings+this.misreads));
   const found=this.found,error=found===null?null:percentError(found,this.acid),accuracy=error===null?0:accuracyPoints(error);
   const quiz=Math.round(Math.min(1,this.quizScore/(QUESTION_COUNT*10))*QUIZ_MAX);
   const hints=this.hints*HINT_COST,total=Math.max(0,Math.min(100,technique+readings+accuracy+quiz-hints));
-  return {issues,technique,readings,accuracy,quiz,hints,total,acid:this.acid,found,error,mean:this.mean,runs:[...runs],wrongReadings,elapsed:this.elapsed};
+  return {issues,technique,readings,accuracy,quiz,hints,total,acid:this.acid,found,error,mean:this.mean,runs:[...runs],wrongReadings:wrongReadings+this.misreads,elapsed:this.elapsed};
  }
 }
