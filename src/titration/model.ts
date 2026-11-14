@@ -45,8 +45,8 @@ function universalAt(pH:number):RGB{
 /** What a flask of this pH looks like with a few drops of indicator in it. alpha is how strongly the liquid is tinted. */
 export function indicatorTint(id:IndicatorId,pH:number):Tint{
  if(id==='phenolphthalein'){
-  const f=logistic(pH,9.3);
-  return {rgb:PINK,alpha:pH<8.2?0:clamp01(f)*.9,name:pH<8.2?'colourless':pH<9.6?'faint pink':pH<11?'pink':'deep pink'};
+  const f=logistic(pH,9.8);
+  return {rgb:PINK,alpha:pH<8.2?0:clamp01(f)*.85,name:pH<8.2?'colourless':pH<10.2?'faint pink':pH<11?'pink':'deep pink'};
  }
  if(id==='methyl-orange'){
   const f=logistic(pH,3.75);

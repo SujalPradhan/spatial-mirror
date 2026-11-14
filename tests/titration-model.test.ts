@@ -33,7 +33,7 @@ test('the end point volume is 25 times the acid concentration over 0.100 within 
 test('indicator colours change in their own ranges only',()=>{
  assert.equal(indicatorTint('phenolphthalein',2).alpha,0);assert.equal(indicatorTint('phenolphthalein',8).alpha,0);
  const faint=indicatorTint('phenolphthalein',9.3),deep=indicatorTint('phenolphthalein',12);
- assert.equal(faint.name,'faint pink');assert.ok(faint.alpha>.2&&faint.alpha<.6);assert.ok(deep.alpha>faint.alpha);
+ assert.equal(faint.name,'faint pink');assert.ok(faint.alpha>.15&&faint.alpha<.6);assert.equal(indicatorTint('phenolphthalein',10).name,'faint pink','one drop past the end point is still faint');assert.equal(indicatorTint('phenolphthalein',10.5).name,'pink');assert.ok(deep.alpha>faint.alpha);
  assert.equal(indicatorTint('methyl-orange',2).name,'red');assert.equal(indicatorTint('methyl-orange',3.7).name,'orange');assert.equal(indicatorTint('methyl-orange',7).name,'yellow');
  assert.ok(indicatorTint('methyl-orange',2).rgb[0]>indicatorTint('methyl-orange',7).rgb[0]-30&&indicatorTint('methyl-orange',2).rgb[1]<indicatorTint('methyl-orange',7).rgb[1]);
  const steps=[1,3,5,7,9,11].map(p=>indicatorTint('universal',p).rgb.join());assert.equal(new Set(steps).size,6,'universal differs at every two pH units');

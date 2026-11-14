@@ -17,7 +17,8 @@ interface Flask {bulk:number;local:number;delivered:number;indicator:IndicatorId
 export type CalcStep='nBase'|'nAcid'|'conc';
 export const calcSteps:CalcStep[]=['nBase','nAcid','conc'];
 export interface CalcEntry {value:number|null;ok:boolean;tries:number}
-export interface Issue {id:string;text:string;cost:number}
+/** affects: whether the error moved the mean titre, as opposed to only a rough run. */
+export interface Issue {id:string;text:string;cost:number;affects:boolean}
 export interface ProcedureStep {id:string;label:string;state:'done'|'current'|'todo'|'skipped'}
 export interface Report {
  issues:Issue[];technique:number;readings:number;accuracy:number;quiz:number;hints:number;total:number;
@@ -188,15 +189,15 @@ export class Bench {
 
  report():Report{
   const issues:Issue[]=[],runs=this.runs;
-  if(!this.rinsed)issues.push({id:'rinse',cost:8,text:'You did not rinse the burette with sodium hydroxide. Water left in it thinned the titrant by about 2%, so each titre came out about 2% too large and the acid looked about 2% stronger than it is.'});
+  if(!this.rinsed)issues.push({id:'rinse',cost:8,affects:true,text:'You did not rinse the burette with sodium hydroxide. Water left in it thinned the titrant by about 2%, so each titre came out about 2% too large and the acid looked about 2% stronger than it is.'});
   const bubbleRun=runs.find(r=>r.bubbleError>0);
-  if(bubbleRun)issues.push({id:'bubble',cost:6,text:`The air bubble was still in the tip, so your ${bubbleRun.kind} titre read ${fmt(bubbleRun.bubbleError,1)} cm3 too high. Run titrant through the tip before you start.`});
-  if(runs.some(r=>r.indicator==='universal'))issues.push({id:'indicator',cost:4,text:'Universal indicator changes colour gradually over the whole range, so the end point is vague to within several drops. Phenolphthalein or methyl orange change sharply.'});
+  if(bubbleRun)issues.push({id:'bubble',cost:6,affects:bubbleRun.kind==='accurate',text:`The air bubble was still in the tip, so your ${bubbleRun.kind} titre read ${fmt(bubbleRun.bubbleError,1)} cm3 too high. Run titrant through the tip before you start.`});
+  if(runs.some(r=>r.indicator==='universal'))issues.push({id:'indicator',cost:4,affects:true,text:'Universal indicator changes colour gradually over the whole range, so the end point is vague to within several drops. Phenolphthalein or methyl orange change sharply.'});
   const over=runs.filter(r=>r.excess>.1);
-  if(over.length)issues.push({id:'overshoot',cost:4,text:`You overshot the end point by more than two drops in ${over.length===1?'run '+(runs.indexOf(over[0])+1):over.length+' runs'} (up to ${fmt(Math.max(...over.map(r=>r.excess)))} cm3). Slow to drop by drop near the colour change.`});
+  if(over.length)issues.push({id:'overshoot',cost:4,affects:over.some(r=>r.kind==='accurate'),text:`You overshot the end point by more than two drops in ${over.length===1?'run '+(runs.indexOf(over[0])+1):over.length+' runs'} (up to ${fmt(Math.max(...over.map(r=>r.excess)))} cm3). Slow to drop by drop near the colour change.`});
   const still=runs.filter(r=>!r.swirled);
-  if(still.length)issues.push({id:'swirl',cost:4,text:`You hardly swirled the flask in ${still.length===1?'run '+(runs.indexOf(still[0])+1):still.length+' runs'}. Unmixed base makes a local pink patch that hides how close you are.`});
-  if(this.mean===null)issues.push({id:'concordance',cost:4,text:'No two accurate titres agreed within 0.10 cm3, so there is no reliable mean.'});
+  if(still.length)issues.push({id:'swirl',cost:4,affects:still.some(r=>r.kind==='accurate'),text:`You hardly swirled the flask in ${still.length===1?'run '+(runs.indexOf(still[0])+1):still.length+' runs'}. Unmixed base makes a local pink patch that hides how close you are.`});
+  if(this.mean===null)issues.push({id:'concordance',cost:4,affects:true,text:'No two accurate titres agreed within 0.10 cm3, so there is no reliable mean.'});
   const wrongReadings=runs.reduce((s,r)=>s+(r.initialWrong?1:0)+(r.finalWrong?1:0),0);
   const technique=Math.max(0,TECHNIQUE_MAX-issues.reduce((s,i)=>s+i.cost,0)),readings=Math.max(0,READINGS_MAX-2*wrongReadings);
   const found=this.found,error=found===null?null:percentError(found,this.acid),accuracy=error===null?0:accuracyPoints(error);
