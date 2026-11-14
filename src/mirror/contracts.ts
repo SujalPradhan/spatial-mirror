@@ -118,6 +118,15 @@ export interface MirrorAbout {heading:string;note:string;privacy:string;sources:
 export interface MirrorDescriptor {chapter:number;guided:boolean;tool:MirrorTool;representation:string;phase:number;selected:null;zoom:number;title?:string;motionLabel?:string;labels?:MirrorPhoneLabels}
 /** Phone wording for an object's motion; ATP's rotor wording is the default. false hides a control the object has no use for. percent shows the angle as a share of a full stroke. */
 export interface MirrorPhoneLabels {tool?:string|false;play?:string|false;stop?:string;percent?:boolean}
+/** One thing the viewer can do without a camera. Buttons, keys and gestures all reach the same engine method. key is a lowercase key name with an optional "shift+" prefix, and fires only while the 3D view has focus. */
+export interface MirrorAction<Engine=any> {
+ id:string;label:string;hint:string;key?:string;
+ /** The gesture that does the same thing, so the cheat sheet can run it. */
+ gesture?:MirrorGestureId;
+ run(engine:Engine):void;
+ /** For a toggle: whether it is on, shown as the button's pressed state. */
+ pressed?(engine:Engine):boolean;
+}
 export interface MirrorObject<State extends MirrorState=MirrorState,View extends MirrorView=MirrorView,Engine extends MirrorDriver=MirrorDriver> {
  /** Prefix of every element id and of the page class. */
  id:string;documentKey:string;title:string;skins:readonly string[];
@@ -140,6 +149,10 @@ export interface MirrorObject<State extends MirrorState=MirrorState,View extends
  idles?(state:State):boolean;
  /** Called when the viewer recenters, for an object with more to put back than the pose. */
  recentered?(engine:Engine):void;
+ /** What this object adds to the shared actions (rotate, zoom, reset, pause), in the order they appear. */
+ actions?:readonly MirrorAction<Engine>[];
+ /** One plain sentence for screen readers about the scene right now; the shell reads it at most every 1.5 seconds and only when it changed. */
+ summary?(engine:Engine,state:State):string;
  /** Ask the tracker to carry each hand's raw landmarks (TrackedHand.shape), for an object driven by the hand's whole shape. */
  handShape?:boolean;
  /** What a watch link needs beyond the shell state: named parts of the page's own discrete state, sent only when a part changes. Keep each part small and rounded. local keeps the viewer's engine reacting to the presenter's hands as well. */

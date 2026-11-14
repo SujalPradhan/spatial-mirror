@@ -10,7 +10,9 @@ export interface WalkthroughOptions {
  id:string;part:<T extends HTMLElement=HTMLElement>(name:string)=>T;gestures:MirrorGesture[];steps?:readonly MirrorWalkthroughStep[];
  frame():GestureFrame;aspect():number;cameraOn():boolean;storage:TutorialStorage;inkOn?():boolean;
  /** Leaves the two-handed gestures (both-pinch, both-fist, clap) out of the guided steps, for a viewer who has one hand free. */
- skipTwoHanded?:boolean;
+ skipTwoHanded?:boolean|(()=>boolean);
+ /** How long a pose must be held before a step counts, read when a walkthrough starts. */
+ holdMs?:()=>number;
  /** Called with the gesture id when someone presses Try it in the cheat sheet. Wire this to the shell's action runner; without it Try it only starts a one-step practice. */
  tryAction?:(gestureId:string)=>void;
 }
@@ -48,11 +50,12 @@ export function createWalkthrough(o:WalkthroughOptions):Walkthrough {
 
  let tutorial:Tutorial|null=null,practising=false,clapPending=false,doneAt=0,view:TutorialView|null=null,doKey=-1,before:unknown,barWidth='';
  const gate=new FeedbackGate();
- const steps=()=>o.gestures.filter(g=>!(o.skipTwoHanded&&TWO.has(g.id))).map(stepFor);
+ const skipTwo=()=>typeof o.skipTwoHanded==='function'?o.skipTwoHanded():!!o.skipTwoHanded;
+ const steps=()=>o.gestures.filter(g=>!(skipTwo()&&TWO.has(g.id))).map(stepFor);
 
  function begin(list:TutorialStep[],practice:boolean){
   if(!list.length)return;
-  tutorial=new Tutorial(list,practice?{basics:0}:{});practising=practice;clapPending=false;doneAt=0;doKey=-1;before=undefined;gate.reset();
+  const holdMs=o.holdMs?.();tutorial=new Tutorial(list,{...(practice?{basics:0}:{}),...(holdMs?{holdMs}:{})});practising=practice;clapPending=false;doneAt=0;doKey=-1;before=undefined;gate.reset();
   box.hidden=false;render(tutorial.current,performance.now());
  }
  function start(){begin(steps(),false);}
