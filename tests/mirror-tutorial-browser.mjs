@@ -21,6 +21,9 @@ try{
   const current=()=>page.evaluate(key=>window[key].tutorial,debug);
   const index=async n=>page.waitForFunction(([key,n])=>window[key].tutorial?.index===n,[debug,n]);
   const feed=pose=>page.evaluate(([key,hands])=>{clearInterval(window.testFeed);window.testFeed=setInterval(()=>window[key].hands(hands),20);},[debug,pose?handsFor(pose):[]]);
+  // atp and atom ask for the effect after the pose, so holding the pose reaches the second phase, which Next then skips.
+  const effectful=id==='atp'||id==='atom';
+  const passes=async n=>{if(!effectful)return index(n);await page.waitForFunction(([key,n])=>{const t=window[key].tutorial;return t?.index===n||t?.index===n-1&&t.phase==='do';},[debug,n]);await page.evaluate(([key,id,n])=>{if(window[key].tutorial.index===n-1)document.querySelector(`#${id}-tutorial-next`).click();},[debug,id,n]);await index(n).catch(async e=>{console.log(id,n,await current());throw e;});};
   const quiet=async()=>{await page.evaluate(()=>clearInterval(window.testFeed));await page.waitForFunction(key=>window[key].frame.hands.length===0,debug);};
   const bounds=()=>page.evaluate(()=>Object.fromEntries(['.workspace-nav','.mirror-stage','.mirror-viewport','.mirror-mark','.mirror-gestures','.mirror-corner'].map(selector=>{const r=document.querySelector(selector).getBoundingClientRect();return [selector,[r.x,r.y,r.width,r.height]];})));
   const arrows=key=>page.evaluate(key=>{const e=new KeyboardEvent('keydown',{key,bubbles:true,cancelable:true});document.dispatchEvent(e);return e.defaultPrevented;},key);
@@ -61,18 +64,18 @@ try{
    await replay.click();await index(0);
    await feed(P1);await page.waitForTimeout(1000);assert.equal((await current()).index,0,'wrong injected pose cannot advance');
    await next.click();await index(1);await page.waitForTimeout(1000);assert.equal((await current()).index,1,'held input cannot pass the manually selected step');assert.equal((await current()).progress,0);assert.equal((await current()).needsRelease,true);assert.match(await card.innerText(),/Release the pose/);
-   await quiet();await feed(P1);await index(2);
+   await quiet();await feed(P1);await passes(2);
    await previous.click();await page.waitForTimeout(1000);assert.equal((await current()).index,1,'backwards also requires release');
    await quiet();await feed(P2);await page.waitForTimeout(800);assert.equal((await current()).index,1,'wrong pose after loss cannot pass');await quiet();
-   await feed(P1);await index(2);await quiet();await feed(P2);await index(3);assert.equal((await current()).checkpoint,true);await quiet();
+   await feed(P1);await passes(2);await quiet();await feed(P2);await passes(3);assert.equal((await current()).checkpoint,true);await quiet();
    await page.waitForTimeout(1500);assert.equal((await current()).index,3,'the checkpoint waits for a choice');assert.equal(await card.isVisible(),true);
    await next.click();assert.equal((await current()).checkpoint,false);await index(3);
    await skip.click();assert.equal(await card.isVisible(),false);
-   assert.equal(await page.evaluate(()=>localStorage.getItem('mirror-tutorial-v1')),'1');
+   assert.equal(await page.evaluate(id=>localStorage.getItem(`mirror-tutorial-v1:${id}`),id),'1');
    assert.equal(await arrows('ArrowLeft'),false);assert.deepEqual(await page.locator('.mirror-gestures li').allTextContents(),guide,'the guide bar is unchanged by the tutorial');
-   await replay.click();await index(0);await page.evaluate(()=>localStorage.removeItem('mirror-tutorial-v1'));
+   await replay.click();await index(0);await page.evaluate(id=>localStorage.removeItem(`mirror-tutorial-v1:${id}`),id);
    await index(0);await next.click();await next.click();await next.click();await skip.click();
-   assert.equal(await page.evaluate(()=>localStorage.getItem('mirror-tutorial-v1')),'1','Finish at the checkpoint marks the tutorial seen');assert.equal(await card.isVisible(),false);
+   assert.equal(await page.evaluate(id=>localStorage.getItem(`mirror-tutorial-v1:${id}`),id),'1','Finish at the checkpoint marks the tutorial seen');assert.equal(await card.isVisible(),false);
    await replay.click();await index(0);await page.setViewportSize({width:390,height:844});const press=()=>page.evaluate(id=>document.querySelector(`#${id}-tutorial-replay`).click(),id);
    const mobileBefore=await bounds();await page.locator(`#${id}-tutorial-skip`).click();assert.deepEqual(await bounds(),mobileBefore);
    await press();await index(0);const r=await card.boundingBox();assert.ok(r.x>=0&&r.x+r.width<=390,'tutorial fits a narrow viewport');await page.screenshot({path:`${shots}/${id}-mobile.png`});

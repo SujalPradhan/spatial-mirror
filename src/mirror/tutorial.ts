@@ -2,10 +2,12 @@ import type {GestureFrame,HandPose} from './contracts';
 
 const HOLD_MS=600,HINT_MS=8000,BASICS=3,STORAGE_KEY='mirror-tutorial-v1';
 export type TutorialPose=HandPose|'both-pinch'|'both-fist'|'clap';
-export interface TutorialStep {id:string;glyph:string;label:string;pose:TutorialPose}
+/** needsEffect: holding the pose only opens a second phase, and the step passes when update is told the effect happened. */
+export interface TutorialStep {id:string;glyph:string;label:string;pose:TutorialPose;needsEffect?:boolean}
 export interface TutorialOptions {holdMs?:number;hintMs?:number;basics?:number}
-/** index===total and step===null once done. At the end of the basics checkpoint is true, step is null and index is the number of basics. justCompleted is true only on the one update that finished a step. */
-export interface TutorialView {index:number;total:number;step:TutorialStep|null;progress:number;hint:boolean;done:boolean;checkpoint:boolean;justCompleted:boolean;needsRelease:boolean}
+/** phase is 'show' while the pose is being held and 'do' while the step waits for its effect. index===total and step===null once done. At the end of the basics checkpoint is true, step is null and index is the number of basics. justCompleted is true only on the one update that finished a step. */
+export type TutorialPhase='show'|'do';
+export interface TutorialView {phase:TutorialPhase;index:number;total:number;step:TutorialStep|null;progress:number;hint:boolean;done:boolean;checkpoint:boolean;justCompleted:boolean;needsRelease:boolean}
 export type TutorialStorage=Pick<Storage,'getItem'|'setItem'>;
 const pairs:Partial<Record<TutorialPose,HandPose>>={'both-pinch':'pinch','both-fist':'fist'};
 function matches(step:TutorialStep,frame:GestureFrame){
@@ -17,20 +19,21 @@ function matches(step:TutorialStep,frame:GestureFrame){
 const implied=(held:TutorialStep,next:TutorialStep)=>held.pose===next.pose||pairs[held.pose]===next.pose;
 
 export class Tutorial {
- private index=0;private hold:number|null=null;private best=0;private moved:number|null=null;private blocked:TutorialStep|null=null;private finished=false;private paused=false;
+ private index=0;private hold:number|null=null;private best=0;private moved:number|null=null;private blocked:TutorialStep|null=null;private finished=false;private paused=false;private phase:TutorialPhase='show';
  private readonly holdMs:number;private readonly hintMs:number;private readonly basics:number;
  constructor(private readonly steps:TutorialStep[],opts:TutorialOptions={}){this.holdMs=opts.holdMs??HOLD_MS;this.hintMs=opts.hintMs??HINT_MS;this.basics=steps.length>(opts.basics??BASICS)?opts.basics??BASICS:0;this.finished=!steps.length;}
- update(frame:GestureFrame,now:number):TutorialView {
+ update(frame:GestureFrame,now:number,effect=false):TutorialView {
   if(this.finished)return this.view(0,false,false);
   if(this.blocked&&!matches(this.blocked,frame))this.blocked=null;
   if(this.paused)return this.view(0,false,false);
   const step=this.steps[this.index];
   // The clock starts with the first frame, not at construction, so a slow camera start does not count as being stuck.
   this.moved??=now;
+  if(this.phase==='do')return effect?this.complete(now):this.view(0,now-this.moved>=this.hintMs,false);
   if(!this.blocked&&matches(step,frame)){
-   if(step.pose==='clap')return this.complete(now);
+   if(step.pose==='clap')return this.shown(step,now);
    this.hold??=now;
-   const held=now-this.hold;if(held>=this.holdMs)return this.complete(now);
+   const held=now-this.hold;if(held>=this.holdMs)return this.shown(step,now);
    if(held>this.best){this.best=held;this.moved=now;}
    return this.view(held/this.holdMs,now-this.moved>=this.hintMs,false);
   }
@@ -48,14 +51,21 @@ export class Tutorial {
   else next=Math.max(0,Math.min(this.steps.length,this.index+direction));
   if(next===this.index&&paused===this.paused)return this.current;
   this.index=next;this.paused=paused;this.finished=next===this.steps.length;this.blocked=this.steps[next]??null;
-  this.hold=this.moved=null;this.best=0;
+  this.hold=this.moved=null;this.best=0;this.phase='show';
   return this.current;
  }
  /** Continues past the basics checkpoint; anywhere else it changes nothing. */
  more(){return this.paused?this.next():this.current;}
  finish(){this.skip();return this.current;}
- restart(){this.index=0;this.finished=!this.steps.length;this.paused=false;this.blocked=null;this.hold=this.moved=null;this.best=0;}
+ restart(){this.phase='show';this.index=0;this.finished=!this.steps.length;this.paused=false;this.blocked=null;this.hold=this.moved=null;this.best=0;}
+ /** The pose was shown: steps that need an effect move on to waiting for it, the rest are done. */
+ private shown(step:TutorialStep,now:number){
+  if(!step.needsEffect)return this.complete(now);
+  this.phase='do';this.hold=null;this.best=0;this.moved=now;
+  return this.view(0,false,false);
+ }
  private complete(now:number){
+  this.phase='show';
   const held=this.steps[this.index],next=this.steps[++this.index];
   this.hold=null;this.best=0;this.moved=now;
   if(next)this.blocked=implied(held,next)?held:null;else this.finished=true;
@@ -65,8 +75,10 @@ export class Tutorial {
  private view(progress:number,hint:boolean,justCompleted:boolean):TutorialView {
   const total=this.steps.length,done=this.finished;
   const paused=this.paused&&!done;
-  return {index:done?total:this.index,total,step:done||paused?null:this.steps[this.index],progress:done?1:progress,hint:hint&&!done&&!paused,done,checkpoint:paused,justCompleted,needsRelease:!done&&!paused&&!!this.blocked};
+  return {phase:done||paused?'show':this.phase,index:done?total:this.index,total,step:done||paused?null:this.steps[this.index],progress:done?1:progress,hint:hint&&!done&&!paused,done,checkpoint:paused,justCompleted,needsRelease:!done&&!paused&&!!this.blocked};
  }
 }
-export function tutorialSeen(storage:TutorialStorage){try{return storage.getItem(STORAGE_KEY)!==null;}catch{return false;}}
-export function markTutorialSeen(storage:TutorialStorage){try{storage.setItem(STORAGE_KEY,'1');}catch{/* Private modes refuse storage; the tutorial just shows again. */}}
+/** Seen is remembered per page. The one flag from before pages had their own counts for ATP only. Without a page id the old shared key is used. */
+const seenKey=(page?:string)=>page?`${STORAGE_KEY}:${page}`:STORAGE_KEY;
+export function tutorialSeen(storage:TutorialStorage,page?:string){try{return storage.getItem(seenKey(page))!==null||page==='atp'&&storage.getItem(STORAGE_KEY)!==null;}catch{return false;}}
+export function markTutorialSeen(storage:TutorialStorage,page?:string){try{storage.setItem(seenKey(page),'1');}catch{/* Private modes refuse storage; the tutorial just shows again. */}}
