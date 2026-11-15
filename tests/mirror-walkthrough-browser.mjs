@@ -5,6 +5,8 @@ import {posedHand} from './hand-fixtures.ts';
 const base=process.env.STUDIO_URL||'http://localhost:4174';
 const shots=process.env.SHOTS||'/tmp/mirror-walkthrough-checks';
 const gpu=process.platform==='darwin'?['--use-angle=metal','--ignore-gpu-blocklist']:['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader'];
+const fail=(what,e)=>{console.error(`mirror-walkthrough FAILED: ${what}\n${e?.stack||e}`);process.exit(1);};
+try{const r=await fetch(`${base}/atp`);if(!r.ok)throw new Error(`HTTP ${r.status}`);}catch(e){fail(`no studio at ${base} (start one, or set STUDIO_URL)`,e);}
 const browser=await chromium.launch({channel:'chrome',headless:true,args:['--use-fake-device-for-media-stream','--use-fake-ui-for-media-stream',...gpu]});
 const bases=Object.fromEntries(['fist','open','pinch','point','victory','thumbUp','thumbDown','love'].map(p=>[p,posedHand(p)]));
 const stub="self.onmessage=({data})=>{if(data.type==='init')self.postMessage({type:'ready',delegate:'synthetic-test-stub'});if(data.type==='frame')data.bitmap.close();};";
@@ -185,4 +187,4 @@ try{
   await api.context.close();
  }
  console.log('Walkthrough checks passed on /atp and /atom. Camera streams are synthetic; the model worker is stubbed; hand landmarks are injected synthetic fixtures. No physical camera or real model. Screenshots: '+shots);
-}finally{await browser.close();}
+}catch(e){console.error(`mirror-walkthrough FAILED: ${e?.stack||e}`);process.exitCode=1;}finally{await browser.close();}
