@@ -144,7 +144,7 @@ keepButton.onclick=()=>{const keep=!inkMode.board.keep;inkMode.setKeep(keep,perf
 // Every gesture effect has a button and a key. All three reach the same engine methods, so none is a second implementation.
 const hasMotion=object.use.includes('thumbUp')||object.use.includes('thumbDown');
 const omitted=object.omit??[];
-const entries:Entry[]=[
+const entries:Entry[]=([
  ...(object.actions??[]).map((a):Entry=>({id:a.id,label:a.label,hint:a.hint,key:a.key,gesture:a.gesture,group:'object',run:()=>a.run(engine),pressed:a.pressed?()=>a.pressed!(engine):undefined})),
  {id:'turn-left',label:'Turn left',hint:'Rotate the view to the left',key:'arrowleft',group:'view',repeat:true,run:()=>turnBy(-TURN,0)},
  {id:'turn-right',label:'Turn right',hint:'Rotate the view to the right',key:'arrowright',gesture:'fist',group:'view',repeat:true,run:()=>turnBy(TURN,0)},
@@ -158,7 +158,7 @@ const entries:Entry[]=[
  {id:'pause',label:'Pause motion',hint:'Stop the object moving by itself, or let it move again',key:'p',group:'motion',frozenOk:true,run:()=>{paused=!paused;if(paused)playing=false;},pressed:()=>paused},
  {id:'freeze',label:'Freeze',hint:'Lock the view and every effect, or release it',key:'f',group:'motion',frozenOk:true,run:()=>freeze(!state.frozen),pressed:()=>state.frozen},
  {id:'undo',label:'Undo',hint:'Step back the last change to the view',key:'u',group:'motion',frozenOk:true,run:undo},
-].filter(e=>!omitted.includes(e.id));
+] as Entry[]).filter(e=>!omitted.includes(e.id));
 const panel=part('actions'),panelToggle=part<HTMLButtonElement>('actions-toggle'),summaryEl=part('summary'),stageEl=part('stage'),cornerEl=stageEl.querySelector<HTMLElement>('.mirror-corner')!;
 const groupNames:[Entry['group'],string][]=[['object','Gesture actions'],['view','View'],['motion','Motion']];
 panel.innerHTML=groupNames.map(([group,name])=>{
