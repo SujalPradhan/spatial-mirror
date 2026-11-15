@@ -7,6 +7,8 @@ import {steps} from './script';
 import {clock,reportHtml} from './report';
 import {drawLens} from './lens';
 import {matchKey} from '../mirror/a11y';
+import {DEMO_SEED,DemoRunner,type DemoHost} from './demo';
+import {seedFromUrl} from './object';
 
 const typing='input,textarea,select,[contenteditable]:not([contenteditable="false"]),[role="textbox"]';
 const esc=(s:string)=>s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]!));
@@ -19,18 +21,20 @@ const hintKey:Record<string,string>={rinse:'rinse',fill:'fill',bubble:'bubble',p
 const LENS=168;
 
 /** The guided overlay on the bench: one task card, one guide bubble, a progress strip, and a Notebook drawer for everything else. */
-export function mountGuide(root:HTMLElement,engine:TitrationEngine,view:()=>BenchView|null,runAction:(id:string)=>boolean,keyed:{id:string;key?:string}[]){
+export function mountGuide(root:HTMLElement,engine:TitrationEngine,view:()=>BenchView|null,runAction:(id:string)=>boolean,keyed:{id:string;key?:string}[],ready:()=>boolean=()=>true){
  const stage=root.querySelector<HTMLElement>('#titration-stage')!,viewport=stage.querySelector<HTMLElement>('#titration-viewport')!;
  const lab=()=>engine.lab;
  const host=document.createElement('div');host.className='ti-overlay';
  host.innerHTML=`
 <ol class="ti-dots" id="titration-progress" aria-label="Progress">${steps.map((s,i)=>`<li data-step="${i}"${s.checkpoint?` data-checkpoint="${s.checkpoint}"`:''}><span class="ti-sr"></span></li>`).join('')}</ol>
 <section class="ti-task" id="titration-task" aria-label="Current task">
- <div class="ti-head"><p class="ti-step" id="titration-step"></p><button type="button" class="ti-skip" id="titration-skip">Skip this step</button></div>
+ <div class="ti-demo" id="titration-demo" role="group" aria-label="Demo controls" hidden><span class="ti-demo-tag">Demo</span><span class="ti-demo-btns"><button type="button" id="titration-demo-pause">Pause</button><button type="button" id="titration-demo-exit">Exit demo</button></span></div>
+ <div class="ti-head"><p class="ti-step" id="titration-step"></p><span class="ti-head-btns"><button type="button" class="ti-watch" id="titration-demo-start"><span aria-hidden="true">&#9654;</span> Watch the demo</button><button type="button" class="ti-skip" id="titration-skip">Skip this step</button></span></div>
  <p class="ti-how"><i aria-hidden="true" id="titration-glyph"></i><span id="titration-how"></span></p>
  <p class="ti-alt" id="titration-alt"></p>
+ <p class="ti-chip" id="titration-chip" hidden></p>
  <div class="ti-body" id="titration-body"></div>
- <div class="ti-foot"><button type="button" class="ti-primary" id="titration-primary" hidden></button></div>
+ <div class="ti-foot"><button type="button" class="ti-primary" id="titration-primary" hidden></button><button type="button" class="ti-primary" id="titration-demo-try" hidden>Now try it yourself</button></div>
 </section>
 <div class="ti-guide" id="titration-guide"><span class="ti-pip" aria-hidden="true">Pip</span><p id="titration-line"></p><button type="button" id="titration-next">Next</button></div>
 <div class="ti-acks" id="titration-acks" aria-hidden="true"></div>
@@ -69,7 +73,40 @@ export function mountGuide(root:HTMLElement,engine:TitrationEngine,view:()=>Benc
  $('skip').onclick=()=>{lab().skip();engine.cue('step');render(true);};
  $('next').onclick=()=>{lab().advanceLine();render(true);};
  $('primary').onclick=()=>{primary();};
- $('restart').onclick=()=>{engine.restart();shownHints=[];reportOpened=false;lastBody='';setDrawer(false);announce('New session. A new unknown acid is in the bottle.');render(true);};
+ const newSession=(seed?:number)=>{engine.restart(seed);shownHints=[];reportOpened=false;lastBody='';setDrawer(false);};
+ $('restart').onclick=()=>{newSession();announce('New session. A new unknown acid is in the bottle.');render(true);};
+
+ // ---- Demo: a script that presses the same keys and buttons a person does.
+ const answerBtn=(i:number)=>host.querySelector<HTMLButtonElement>(`.ti-opt[data-o="${i}"]`);
+ const demoHost:DemoHost={
+  lab,act:runAction,speed:n=>{engine.simSpeed=n;},
+  freeze:on=>{engine.paused=on;if(on)engine.closeTap();},
+  mark:i=>answerBtn(i)?.classList.add('is-picked'),pick:i=>answerBtn(i)?.click(),
+  read:v=>{const inp=host.querySelector<HTMLInputElement>('#titration-reading');if(!inp)return;inp.value=v.toFixed(2);inp.dispatchEvent(new Event('change'));$('primary').click();},
+  calc:text=>{const inp=host.querySelector<HTMLInputElement>('#titration-calc-input');if(!inp)return;inp.value=text;$('primary').click();},
+ };
+ const demo=new DemoRunner(demoHost);
+ const urlWithout=(name:string)=>{try{const u=new URL(location.href);u.searchParams.delete(name);history.replaceState(null,'',u);}catch{/* a sandboxed frame keeps its address */}};
+ function startDemo(){
+  if(demo.active)return;
+  const seed=Number(new URLSearchParams(location.search).get('seed'));
+  newSession(Number.isInteger(seed)&&seed>0?seed:DEMO_SEED);
+  engine.demoLock=true;demo.start();announce('Demo started. Escape exits.');render(true);$('demo-pause').focus();
+ }
+ function exitDemo(){
+  if(!demo.active)return;
+  demo.stop();engine.demoLock=false;urlWithout('demo');newSession(seedFromUrl());
+  announce('Demo ended. You are at step 1.');render(true);$('demo-start').focus();
+ }
+ $('demo-start').onclick=startDemo;$('demo-exit').onclick=exitDemo;$('demo-try').onclick=exitDemo;
+ $('demo-pause').onclick=()=>{if(demo.paused)demo.resume();else demo.pause();announce(demo.paused?'Demo paused.':'Demo playing.');render(true);};
+ stage.addEventListener('click',e=>{if(demo.active&&(e.target as Element).closest('.mirror-actions button[data-action]')){e.stopPropagation();e.preventDefault();}},true);
+ window.addEventListener('keydown',e=>{
+  if(!demo.active)return;
+  if(e.key==='Escape'&&!document.querySelector('dialog[open]')){e.stopImmediatePropagation();e.preventDefault();exitDemo();return;}
+  const t=e.target instanceof Element?e.target:null;
+  if(e.key!=='Tab'&&e.key!=='Escape'&&!t?.closest('button,a,input,select,textarea,dialog'))e.stopImmediatePropagation();
+ },true);
  const quizLines=()=>questions.filter(q=>lab().bench.quiz[q.id]).map(q=>{const s=lab().bench.quiz[q.id];return {text:q.text,attempts:s.attempts,correct:s.correct,points:s.correct?quizPoints(s.attempts):0};});
  $('download').onclick=()=>{
   const blob=new Blob([reportHtml(lab().bench.report(),quizLines())],{type:'text/html'}),a=document.createElement('a');
@@ -158,27 +195,33 @@ export function mountGuide(root:HTMLElement,engine:TitrationEngine,view:()=>Benc
  let lastRev=-1,lastSig='',lastKey='',lastLine='',lastRefresh=0,lastInset=0,lastDelivered='';
  function render(force=false){
   const l=lab(),b=l.bench;
-  const sig=`${l.step}|${l.phase}|${l.rev}|${!!l.quiz}|${l.finished}|${l.entry}`;
+  const sig=`${l.step}|${l.phase}|${l.rev}|${!!l.quiz}|${l.finished}|${l.entry}|${demo.rev}|${demo.state}`;
   const changed=sig!==lastSig||l.rev!==lastRev;
   if(changed||force){
    lastSig=sig;lastRev=l.rev;
-   const t=l.task;
+   const t=l.task,d=demo.active,n=demo.narration;
    $('step').innerHTML=l.finished?'<b>All ten steps done</b>':`Step ${l.step+1} of ${steps.length} · <b>${esc(l.quiz?'Quick check':l.title)}</b>`;
    $('glyph').textContent=l.quiz?'?':l.finished?'📓':t.glyph;
-   $('how').textContent=l.quiz?'Pick the best answer. A wrong pick explains why and you try again.':l.finished?'Open the Notebook for your readings, hints and report.':t.how;
-   $('alt').textContent=l.quiz?'Mouse or keys: click an answer, Tab between them.':l.finished?'':`Mouse or keys: ${t.alt}`;
+   $('how').textContent=d?n.doing:l.quiz?'Pick the best answer. A wrong pick explains why and you try again.':l.finished?'Open the Notebook for your readings, hints and report.':t.how;
+   $('alt').textContent=d||l.finished?'':l.quiz?'Mouse or keys: click an answer, Tab between them.':`Mouse or keys: ${t.alt}`;
+   const chip=$('chip');chip.hidden=!(d&&n.chip);chip.textContent=n.chip;
+   stage.classList.toggle('is-demo',d);$('demo').hidden=!d;$('demo-start').hidden=d;
+   const pause=$('demo-pause');pause.hidden=demo.finished;pause.textContent=demo.paused?'Resume':'Pause';
+   $('demo-try').hidden=!demo.finished;
+   ($('restart') as HTMLButtonElement).disabled=d;($('hint') as HTMLButtonElement).disabled=d;
    host.querySelectorAll<HTMLElement>('.ti-dots li').forEach((li,i)=>{
     const st:string=l.done[i]??(i===l.step&&!l.finished?'current':'todo');
     li.dataset.state=st;li.setAttribute('aria-label',`${i+1}, ${steps[i].title}${steps[i].checkpoint?`, checkpoint ${steps[i].checkpoint}`:''}: ${st}`);
     if(st==='current')li.setAttribute('aria-current','step');else li.removeAttribute('aria-current');
     li.firstElementChild!.textContent=`${steps[i].title}: ${st}`;
    });
-   $<HTMLButtonElement>('skip').textContent=l.quiz?'Skip this question':'Skip this step';$('skip').hidden=l.finished;
-   $('line').textContent=l.line;$('next').hidden=!l.more;$('guide').hidden=!l.line;
-   if(l.line!==lastLine){announce(l.line);lastLine=l.line;}
+   $<HTMLButtonElement>('skip').textContent=l.quiz?'Skip this question':'Skip this step';$('skip').hidden=l.finished||d;
+   const line=d?n.line:l.line;
+   $('line').textContent=line;$('next').hidden=d||!l.more;$('guide').hidden=!line;
+   if(line!==lastLine){announce(line);lastLine=line;}
    renderBody(force);renderPrimary();
    const key=`${l.step}${l.phase}${!!l.quiz}${l.finished}`;
-   if(key!==lastKey){lastKey=key;announce(l.finished?'All steps done.':l.quiz?'Quick check. Pick the best answer.':`Step ${l.step+1} of ${steps.length}: ${l.title}. ${t.how}`);}
+   if(key!==lastKey){lastKey=key;announce(l.finished?'All steps done.':l.quiz?'Quick check. Pick the best answer.':`Step ${l.step+1} of ${steps.length}: ${l.title}.${d?'':` ${t.how}`}`);}
    renderNotebook();
    if(l.bench.calcDone&&l.finished&&!reportOpened){reportOpened=true;setDrawer(true);}
   }
@@ -187,8 +230,10 @@ export function mountGuide(root:HTMLElement,engine:TitrationEngine,view:()=>Benc
  render(true);
 
  // ---- Lens, acks and the running commentary.
+ let lastTick=0;
  function frame(now:number){
   render();
+  demo.tick(Math.min(100,now-(lastTick||now)));lastTick=now;
   const l=lab(),b=l.bench,cv=canvas();
   if(cv){
    if(cv.width!==LENS*ratio){cv.width=LENS*ratio;cv.height=LENS*ratio;}
@@ -232,5 +277,6 @@ export function mountGuide(root:HTMLElement,engine:TitrationEngine,view:()=>Benc
   const hit=keyed.find(a=>a.key&&matchKey(e,a.key));
   if(hit&&(!e.repeat||/arrow|\[|\]|^f$/.test(hit.key!))){e.preventDefault();runAction(hit.id);}
  });
- return {render:()=>render(true),setDrawer,get live(){return live.textContent;},get drawerOpen(){return !drawer.hidden;}};
+ if(new URLSearchParams(location.search).has('demo')){const wait=()=>{if(ready())startDemo();else requestAnimationFrame(wait);};wait();}
+ return {render:()=>render(true),setDrawer,get demo(){return {state:demo.state,paused:demo.paused,start:startDemo,exit:exitDemo};},get live(){return live.textContent;},get drawerOpen(){return !drawer.hidden;}};
 }

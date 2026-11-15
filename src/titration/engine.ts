@@ -21,6 +21,8 @@ const names:Record<string,IndicatorId>={'dropper-phenolphthalein':'phenolphthale
 
 export class TitrationEngine implements MirrorDriver<TitrationOutput> {
  lab:Lab;
+ /** Demo mode: the simulation waits while paused, runs `simSpeed` times faster, and ignores the mouse and hands while locked. */
+ paused=false;simSpeed=1;demoLock=false;
  idle=false;readonly position=0;readonly speed=0;
  held:Held[]=[];
  /** The dropper chosen from the keyboard. */
@@ -47,7 +49,7 @@ export class TitrationEngine implements MirrorDriver<TitrationOutput> {
  /** Start a fresh session at the bench, optionally with a fixed seed. */
  restart(seed=Date.now()%1e9){
   this.lab=new Lab(seed);this.lastDrop=0;this.source='ui';this.swirler.reset();this.held=[];this.placed.clear();this.locked.clear();
-  this.tapDrag=null;this.mouseSwirl=false;this.keyChoice=null;this.acks=[];this.kickPour=0;this.kickTap=null;
+  this.tapDrag=null;this.mouseSwirl=false;this.keyChoice=null;this.acks=[];this.kickPour=0;this.kickTap=null;this.paused=false;this.simSpeed=1;this.demoLock=false;
  }
  seek(_:number){}
  /** Space and thumbs up: shut an open tap, otherwise carry on. */
@@ -103,6 +105,7 @@ export class TitrationEngine implements MirrorDriver<TitrationOutput> {
   return true;
  }
  pointerDown(p:WorldPoint){
+  if(this.demoLock)return true;
   if(this.lab.quiz||this.lab.finished)return true;
   if(this.tryPick(-1,p))return true;
   if(this.lab.tapAllowed&&dist(p,TAP)<1.1){this.tapDrag={x:p.x,tap:.1};this.setTap(.1);return true;}
@@ -270,13 +273,13 @@ export class TitrationEngine implements MirrorDriver<TitrationOutput> {
  step(frame:GestureFrame,dt:number,_view:MirrorViewState,frozen:boolean):TitrationOutput{
   const h=Number.isFinite(dt)?clamp(dt,0,.05):0;this.t+=h;
   const l=this.lab,b=l.bench,before=b.drops+l.passed/DROP;
-  if(!frozen){
-   this.hands(frame,h);
-   if(!frame.hands.length)this.cursors=[];
+  if(!frozen&&!this.paused){
+   if(this.demoLock)this.cursors=[];else{this.hands(frame,h);if(!frame.hands.length)this.cursors=[];}
    this.heldStep(h);
    if(l.phase==='run'&&!this.mouseSwirl&&!frame.hands.some(x=>x.pose==='fist'||x.pose==='thumbUp'))this.swirlLevel=0;
    b.setSwirl(this.swirlLevel);
    l.tick(h);
+   for(let i=1;i<this.simSpeed;i++){this.heldStep(h);l.tick(h);}
   }
   const whole=Math.floor(b.drops+l.passed/DROP);
   if(whole>this.lastDrop&&before<b.drops+l.passed/DROP)this.sounds.push({type:'drip'});
