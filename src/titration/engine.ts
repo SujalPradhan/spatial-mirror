@@ -42,6 +42,8 @@ export class TitrationEngine implements MirrorDriver<TitrationOutput> {
  constructor(private readonly world:MirrorWorld,seed=Date.now()%1e9){this.lab=new Lab(seed);}
  get bench(){return this.lab.bench;}
  get activeAcks(){return this.acks;}
+ /** The scene of the latest step. Read by tests. */
+ scene:TitrationScene|null=null;
  /** Start a fresh session at the bench, optionally with a fixed seed. */
  restart(seed=Date.now()%1e9){
   this.lab=new Lab(seed);this.lastDrop=0;this.source='ui';this.swirler.reset();this.held=[];this.placed.clear();this.locked.clear();
@@ -154,7 +156,7 @@ export class TitrationEngine implements MirrorDriver<TitrationOutput> {
    if(h.pose!=='pinch'||this.locked.has(h.id)||this.held.some(g=>g.hand===h.id))continue;
    const w=this.world.mirrorToWorld(h.pinch);
    const loose=this.held.filter(g=>g.releasedAt>=0&&g.hand>=0).sort((a,b)=>dist(a,w)-dist(b,w))[0];
-   if(loose&&dist(loose,w)<REATTACH){loose.hand=h.id;loose.releasedAt=-1;loose.rest=this.roll(h)??0;continue;}
+   if(loose&&dist(loose,w)<REATTACH){loose.hand=h.id;loose.releasedAt=-1;continue;}
    this.tryPick(h.id,w,this.roll(h)??0);
   }
   // A held thumbs up confirms: the same as Space.
@@ -289,6 +291,7 @@ export class TitrationEngine implements MirrorDriver<TitrationOutput> {
    props:this.propViews(),zones:this.zoneViews(),station:l.station,pour:this.pourMouth,
    waste:Math.min(1,l.passed/14),acid:f||l.step>4?.6:1,cursors:this.cursors,acks:this.acks.map(a=>({...a})),
   };
+  this.scene=scene;
   const sounds=this.sounds;this.sounds=[];
   return {scene,view:null,sounds,holding:false};
  }
