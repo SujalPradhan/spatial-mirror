@@ -41,6 +41,7 @@ export class TitrationEngine implements MirrorDriver<TitrationOutput> {
  ui:(command:'notebook'|'hint')=>void=()=>{};
  constructor(private readonly world:MirrorWorld,seed=Date.now()%1e9){this.lab=new Lab(seed);}
  get bench(){return this.lab.bench;}
+ get activeAcks(){return this.acks;}
  /** Start a fresh session at the bench, optionally with a fixed seed. */
  restart(seed=Date.now()%1e9){
   this.lab=new Lab(seed);this.lastDrop=0;this.source='ui';this.swirler.reset();this.held=[];this.placed.clear();this.locked.clear();

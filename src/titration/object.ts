@@ -1,8 +1,9 @@
 import './style.css';
-import type {MirrorObject,MirrorState} from '../mirror/contracts';
+import type {MirrorAction,MirrorObject,MirrorState} from '../mirror/contracts';
 import {clampPhase} from '../mirror/contracts';
 import type {Quat} from '../types';
 import {sources,scientificNote} from './content';
+import {steps} from './script';
 import {TitrationEngine} from './engine';
 import {BenchView} from './view';
 import {TitrationAudio} from './audio';
@@ -21,13 +22,47 @@ function validate(value:unknown):TitrationState{
  return {schema:1,tool:value.tool as TitrationState['tool'],phase:clampPhase(value.phase),view:{q:view.q.map(n=>n/norm) as Quat,zoom:view.zoom,x:view.x,y:view.y},frozen:value.frozen};
 }
 
+const act=(id:string,label:string,hint:string,key:string,run:(e:TitrationEngine)=>void):MirrorAction<TitrationEngine>=>({id,label,hint,key,run});
+const actions:MirrorAction<TitrationEngine>[]=[
+ act('wear','Put on goggles','Step 1: put the goggles on','g',e=>e.wear()),
+ act('rinse','Rinse burette','Step 2: pour a little, then drain it. Press again for the second part','r',e=>e.rinseKey()),
+ act('pour','Pour','Steps 2 and 3: pour from the bottle. Hold the key to keep pouring','f',e=>e.pourKey()),
+ act('tap-up','Open tap more','Turn the stopcock further open',']',e=>e.tapBy(.05)),
+ act('tap-down','Close tap a little','Turn the stopcock back','[',e=>e.tapBy(-.05)),
+ act('tap-close','Close tap','Shut the stopcock','x',e=>e.closeTap()),
+ act('drop','One drop','Let one drop run','d',e=>e.drop()),
+ act('swirl','Swirl','Swirl the flask for a moment','s',e=>e.swirlPulse()),
+ act('burst','Clear the tip','Step 4: a short burst of the tap','b',e=>e.burstKey()),
+ act('pipette','Pipette the acid','Step 5: draw 25.0 cm3 and run it into the flask','p',e=>e.pipetteKey()),
+ act('choose-1','Choose phenolphthalein','Step 6: take the phenolphthalein dropper','1',e=>e.choose('phenolphthalein')),
+ act('choose-2','Choose methyl orange','Step 6: take the methyl orange dropper','2',e=>e.choose('methyl-orange')),
+ act('choose-3','Choose universal indicator','Step 6: take the universal indicator dropper','3',e=>e.choose('universal')),
+ act('add-drop','Add a drop','Step 6: one drop of the chosen indicator','a',e=>e.addDrop()),
+ act('read-up','Reading up 0.05','Raise the reading you are setting','arrowup',e=>e.lab.nudge(.05)),
+ act('read-down','Reading down 0.05','Lower the reading you are setting','arrowdown',e=>e.lab.nudge(-.05)),
+ act('read-up-1','Reading up 1','Raise the reading by one whole cm3','shift+arrowup',e=>e.lab.nudge(1)),
+ act('read-down-1','Reading down 1','Lower the reading by one whole cm3','shift+arrowdown',e=>e.lab.nudge(-1)),
+ act('hint','Hint','Show a hint for this step. It costs 2 points','h',e=>e.ui('hint')),
+ act('notebook','Notebook','Open or close the notebook','n',e=>e.ui('notebook')),
+ act('skip','Skip this step','Let the bench do this step. It costs a little technique','k',e=>e.lab.skip()),
+];
 export const titrationObject:MirrorObject<TitrationState,BenchView,TitrationEngine>&{liveView:BenchView|null;liveAudio:TitrationAudio|null}={
  liveView:null,liveAudio:null,
  id:'titration',documentKey:'titration:bench:mirror',title:'Titration bench - Spatial Studio',skins:['bench'],
- motion:{run:'Run',reverse:'Reverse'},
- gestures:{open:'Turn the tap',fist:'Swirl'},
- use:['open','fist'],
- copy:{mark:['Titration','bench'],stageLabel:'A titration bench with a burette over a conical flask',viewportLabel:'3D titration bench. Drag to turn the view, scroll to zoom. Space closes the tap.',loading:'Setting up the bench…',loadError:'Could not set up the bench. ',cameraFallback:'Camera unavailable. The mouse and keyboard run every step: use the buttons and the stopcock slider. '},
+ motion:{run:'Next',reverse:'Back'},
+ gestures:{pinch:'Pick up',open:'Turn the tap',fist:'Swirl',thumbUp:'Next'},
+ use:['pinch','open','fist','thumbUp'],
+ omit:['turn-left','turn-right','turn-up','turn-down','pause','freeze','reverse'],
+ actions,
+ bar:engine=>{
+  const l=engine.lab;
+  if(l.quiz||l.finished)return l.more?[{id:'thumbUp',label:'Next'}]:[{id:'thumbUp',label:'Continue'}];
+  const bar=[...l.task.bar];
+  if(l.more&&!bar.some(g=>g.id==='thumbUp'))bar.push({id:'thumbUp',label:'Next'});
+  return bar;
+ },
+ summary:engine=>{const l=engine.lab;return l.finished?'All steps done.':`Step ${l.step+1} of ${steps.length}: ${l.title}. ${l.line}`;},
+ copy:{mark:['Titration','bench'],stageLabel:'A titration bench with a burette over a conical flask',viewportLabel:'3D titration bench. Drag objects to use them, scroll to zoom. Enter goes on, Space shuts the tap.',loading:'Setting up the bench…',loadError:'Could not set up the bench. ',cameraFallback:'Camera unavailable. The mouse and keyboard run every step: use the task card, the Actions list and the keys. '},
  about:{heading:'A titration, step by step',note:scientificNote,privacy:'Hand tracking runs in your browser and no video leaves the device. A paired phone sends only hand positions.',sources},
  createView(host){return this.liveView=new BenchView(host);},
  createEngine:world=>new TitrationEngine(world,seedFromUrl()),

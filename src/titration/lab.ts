@@ -5,7 +5,7 @@ import {intro,said,steps,taskFor,type StepId,type Task} from './script';
 
 /** Where the camera sits for a step: x, y and zoom, plus the half width in scene units the step needs in view. */
 export interface Station {x:number;y:number;zoom:number;wide:number}
-const BENCH:Station={x:0,y:2.35,zoom:1,wide:4.9},TAP:Station={x:0,y:-.2,zoom:1.35,wide:4.9},FLASK:Station={x:0,y:.2,zoom:1.25,wide:4.9},NOTEBOOK:Station={x:2.6,y:1.6,zoom:.85,wide:7};
+const BENCH:Station={x:0,y:2,zoom:.92,wide:4.9},TAP:Station={x:0,y:-.2,zoom:1.3,wide:4.9},FLASK:Station={x:0,y:.2,zoom:1.2,wide:4.9},NOTEBOOK:Station={x:2.6,y:1.6,zoom:.85,wide:7};
 /** Rinse volume that counts as "a little", cm3; the fill zone on the burette scale, readings; the pour and drain speeds, cm3 per second. */
 export const RINSE_VOLUME=3.5,FILL_FROM=0,FILL_TO=1,POUR_MAX=10,DRAIN_BOOST=3,EMPTY=BURETTE_MAX;
 const OVERFLOW=-2.5,BURST_NEED=.5,SETTLE=1.2,CLOSED_FOR=.3,FULL_TIME=1.4;
