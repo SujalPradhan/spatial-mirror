@@ -1,232 +1,343 @@
-// Run with tsx against `PORT=4417 node server.mjs`: STUDIO_URL=http://localhost:4417 npx tsx tests/titration-browser.mjs
-// The whole practical runs from the mouse and keyboard with no camera. Hands are injected landmarks that go through the real gesture tracker.
-// SHOTS=<dir> keeps a screenshot of each stage at 1280x800 and 390x844.
+// Run with tsx against a dev server: STUDIO_URL=http://localhost:4466 SHOTS=<dir> npx tsx tests/titration-browser.mjs
+// Part 1 drives the guided lab with injected hand landmarks that go through the real gesture tracker (synthetic, no camera).
+// Part 2 runs the whole practical from the mouse and keyboard only, start to report.
+// Part 3 walks every step at 390x844 by the Skip button.
 import {chromium} from 'playwright';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {posedHand} from './hand-fixtures.ts';
-const base=process.env.STUDIO_URL||'http://localhost:4417',shots=process.env.SHOTS;
+import {props} from '../src/titration/props.ts';
+const base=process.env.STUDIO_URL||'http://localhost:4466',shots=process.env.SHOTS;
 const browser=await chromium.launch({channel:'chrome',headless:true,args:['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
-const context=await browser.newContext({viewport:{width:1280,height:800},acceptDownloads:true}),page=await context.newPage(),errors=[],checks=[];
-page.setDefaultTimeout(60000);page.on('pageerror',e=>errors.push(e.message));
+const errors=[],checks=[];
 const check=m=>{checks.push(m);console.log('ok',m);};
-const shot=async(name,p=page)=>{if(shots)await p.screenshot({path:`${shots}/${name}.png`});};
-const key=async k=>{await page.evaluate(()=>document.activeElement?.blur?.());await page.keyboard.press(k);};
-const text=sel=>page.locator(sel).innerText();
-const bench=fn=>page.evaluate(fn);
-const until=(fn,arg,opts)=>page.waitForFunction(fn,arg,{polling:'raf',timeout:90000,...opts});
+const home=id=>props.find(p=>p.id===id).home;
 const roundTo=v=>Math.round(v*20)/20;
-const trueReading=()=>bench(()=>window.__titration.bench.reading);
-async function record(kind,offset=0){
- const r=roundTo((await trueReading())+offset);
- await page.locator('#titration-reading').fill(String(r));
- await page.locator(kind==='initial'?'#titration-initial':'#titration-final').click();
- return r;
-}
-async function swirl(ms=900){await key('s');await page.waitForTimeout(ms);}
-/** Fast until about a cm3 short, then drop by drop with a swirl after each until the first lasting colour. */
-async function titrate({overshoot=false}={}){
- await page.evaluate(()=>{const s=document.querySelector('#titration-tap');s.value='100';s.dispatchEvent(new Event('input',{bubbles:true}));});
- await until(()=>window.__titration.bench.excess>-1.3);
- await key(' ');
- assert.equal(await bench(()=>window.__titration.bench.tap),0,'Space shuts the tap');
- if(overshoot){
-  await page.evaluate(()=>{const s=document.querySelector('#titration-tap');s.value='100';s.dispatchEvent(new Event('input',{bubbles:true}));});
-  await until(()=>window.__titration.bench.excess>.6);await key(' ');await swirl(1800);return;
- }
- for(let i=0;i<60;i++){
-  if(await bench(()=>window.__titration.bench.tint.alpha>.12))return;
-  await key('d');await swirl(800);
- }
- throw new Error('no end point reached');
-}
-async function newFlask(){await key('p');await key('a');}
-const contrast=()=>page.evaluate(()=>{
- const parse=c=>{const m=c.match(/[\d.]+/g).map(Number);return {r:m[0],g:m[1],b:m[2],a:m[3]??1};};
- const lum=({r,g,b})=>{const f=v=>{v/=255;return v<=.03928?v/12.92:Math.pow((v+.055)/1.055,2.4);};return .2126*f(r)+.7152*f(g)+.0722*f(b);};
- const over=(top,bottom)=>({r:top.r*top.a+bottom.r*(1-top.a),g:top.g*top.a+bottom.g*(1-top.a),b:top.b*top.a+bottom.b*(1-top.a),a:1});
- const background=el=>{let layers=[];for(let e=el;e;e=e.parentElement){const c=parse(getComputedStyle(e).backgroundColor);if(c.a>0)layers.push(c);if(c.a>=1)break;}let out={r:10,g:17,b:25,a:1};for(const c of layers.reverse())out=over(c,out);return out;};
- const bad=[];
- for(const el of document.querySelectorAll('.ti-sheet button:not(:disabled),.ti-sheet p,.ti-sheet li,.ti-sheet label,.ti-sheet summary,.ti-sheet td,.ti-sheet th,.ti-sheet kbd,.ti-sheet output,.ti-sheet input:not(:disabled),.ti-sheet select:not(:disabled)')){
-  if(el instanceof HTMLInputElement&&['checkbox','range','radio'].includes(el.type))continue;if(!el.textContent.trim()&&!(el.tagName==='INPUT'&&el.value))continue;if(el.offsetParent===null)continue;
-  const fg=parse(getComputedStyle(el).color),bg=background(el),f=over(fg,bg),a=lum(f),b=lum(bg),ratio=(Math.max(a,b)+.05)/(Math.min(a,b)+.05);
-  if(ratio<4.5)bad.push(`${el.tagName}.${el.className} "${el.textContent.trim().slice(0,30)}" ${ratio.toFixed(2)}`);
- }
- return bad;
-});
-const smallTargets=()=>page.evaluate(()=>[...document.querySelectorAll('.ti-sheet button,.ti-sheet input,.ti-sheet select,.ti-sheet summary,.mirror-corner button')].filter(e=>e.offsetParent!==null).map(e=>{const r=e.getBoundingClientRect();return {name:(e.id||e.textContent).slice(0,24),w:r.width,h:r.height};}).filter(t=>t.w<24||t.h<24));
-try{
- assert.equal((await page.goto(`${base}/titration?seed=21`)).status(),200);
+const em=/—/;
+
+async function open(width,height,seed=21){
+ const context=await browser.newContext({viewport:{width,height},acceptDownloads:true,hasTouch:width<500}),page=await context.newPage();
+ page.setDefaultTimeout(90000);page.on('pageerror',e=>errors.push(e.message));
+ assert.equal((await page.goto(`${base}/titration?seed=${seed}`)).status(),200);
  await page.waitForFunction(()=>window.__titration?.ready&&window.__titration.owns,null,{timeout:60000});
- assert.equal(await page.title(),'Titration bench - Spatial Studio');assert.equal(await text('.workspace-nav [aria-current=page]'),'Titration');
- assert.equal(await text('.mirror-mark'),'Titration bench');
- assert.equal(await page.locator('#titration-objectives li').count(),6);assert.equal(await page.locator('#titration-steps li').count(),8);
- assert.match(await text('.ti-story'),/unknown hydrochloric acid using 0\.100 mol\/dm3 sodium hydroxide/);
- assert.deepEqual(await page.locator('#titration-gestures li').allTextContents(),['🖐Turn the tap','✊Swirl']);
- await shot('01-start');
- check('page loads at /titration with nav, 6 objectives, 8 steps, 2 gestures, no camera');
- assert.equal(await page.locator('#titration-sheet *:not(.ti-sr)').evaluateAll(l=>l.some(e=>/\u2014/.test(e.textContent))),false,'no em dashes');
- const acid=await bench(()=>window.__titration.bench.acid);assert.ok(acid>=.08&&acid<=.12);
- assert.equal(await bench(()=>window.__titration.bench.acid),acid);
- check(`the unknown acid is seeded and in range (${acid})`);
-
- // ---- Preparation by keys and buttons.
- await key('f');assert.equal(await page.locator('#titration-steps li[data-id=rinse]').getAttribute('data-state'),'skipped','filling first marks the rinse skipped, silently');
- assert.doesNotMatch(await text('#titration-message'),/rinse/i,'no warning is shown about the skipped rinse');
- await page.locator('#titration-restart').click();assert.equal(await bench(()=>window.__titration.bench.filled),false);
- await key('r');await page.locator('#titration-fill').click();await key('b');
- assert.deepEqual(await bench(()=>{const b=window.__titration.bench;return [b.rinsed,b.filled,b.bubble];}),[true,true,false]);
- assert.notEqual(await bench(()=>window.__titration.bench.seed),21,'a new session draws a new unknown');
- await page.goto(`${base}/titration?seed=21`);await page.waitForFunction(()=>window.__titration?.ready&&window.__titration.owns);
- await key('r');await page.locator('#titration-fill').click();await page.locator('#titration-bubble').click();
- await page.locator('#titration-pipette').click();
- assert.equal(await page.locator('#titration-add-indicator').isDisabled(),false);
- await page.locator('#titration-indicator').selectOption('phenolphthalein');await page.locator('#titration-add-indicator').click();
- await shot('02-prepared');
- assert.deepEqual(await page.locator('#titration-steps li').evaluateAll(l=>l.map(x=>x.dataset.state)),['done','done','done','done','done','current','todo','todo']);
- check('keys R F B and buttons prepare the flask; a skipped rinse is marked without a warning');
-
- // ---- The tap is blocked until the initial reading is recorded; reading aids and the zoom view.
- assert.match(await text('#titration-blocked'),/initial reading/);
- await bench(()=>{window.__titration.panel.act.drop();});assert.equal(await bench(()=>window.__titration.bench.reading)>0,true);
- const before=await trueReading();await page.evaluate(()=>{const s=document.querySelector('#titration-tap');s.value='100';s.dispatchEvent(new Event('input',{bubbles:true}));});await page.waitForTimeout(400);
- assert.equal(await trueReading(),before,'nothing runs before the initial reading is recorded');
- await key(' ');
- assert.equal(await page.locator('#titration-lens-text').innerText(),'','no number is given by default');
- await page.locator('#titration-aids').check();assert.match(await text('#titration-lens-text'),/between \d+\.\d and \d+\.\d cm3/);await shot('03-reading-aids');await page.locator('#titration-aids').uncheck();
- await page.locator('#titration-zoom').click();await page.waitForTimeout(900);await shot('04-zoom-burette');await key('z');await page.waitForTimeout(500);
- check('no auto readout by default, reading aids add a 0.1 cm3 window and a guide line, zoom view works');
-
- // ---- Hands: a wrist turn sets the stopcock, a level hand shuts it.
- await record('initial',.2);
- assert.equal(await bench(()=>window.__titration.bench.flask.initial!==null),true);
- const stage=await page.locator('#titration-stage').boundingBox(),aspect=stage.width/stage.height;
- const roll=(deg,mx=.5,my=.55)=>{const h=posedHand('open'),a=deg*Math.PI/180,c=Math.cos(a),s=Math.sin(a);return h.map(p=>{const x=p.x*c-p.y*s,y=p.x*s+p.y*c;return {x:(1-mx)+x*.14,y:my+y*.14*aspect,z:p.z*.14};});};
- const feed=hands=>page.evaluate(h=>{clearInterval(window.testFeed);window.testFeed=setInterval(()=>window.__titration.hands(h),33);},hands);
- const quiet=async()=>{await page.evaluate(()=>clearInterval(window.testFeed));await page.waitForFunction(()=>window.__titration.frame.hands.length===0);};
- const settled=async fn=>{await page.waitForTimeout(700);return bench(fn);};
- await feed([roll(0)]);await page.waitForFunction(()=>window.__titration.frame.hands[0]?.pose==='open');
- const level=await settled(()=>window.__titration.bench.tap);assert.ok(level<.01,`level hand keeps the tap shut: ${level}`);
- await feed([roll(20)]);const small=await settled(()=>window.__titration.bench.tap);assert.ok(small>0&&small<.2,`a small wrist turn drips: ${small}`);
- await feed([roll(-20)]);assert.ok(await settled(()=>window.__titration.bench.tap)>0,'either direction works');
- await feed([roll(70)]);const big=await settled(()=>window.__titration.bench.tap);assert.ok(big>.9,`a big turn runs a stream: ${big}`);
- assert.match(await text('#titration-tap-text'),/stream/);
- const r0=await trueReading();await page.waitForTimeout(700);assert.ok(await trueReading()>r0+.3,'the stream delivers titrant');
- const t45=await bench(()=>window.__titration.engine.turn);assert.ok(Math.abs(t45)>1);
- await quiet();assert.equal(await bench(()=>window.__titration.bench.tap),0,'taking the hand away shuts the tap');
- check('wrist roll frames: level shuts, 20 degrees drips either way, 70 degrees streams, hand away closes the tap');
- // Swirl: a fist going round.
- const circle=t=>{const h=posedHand('fist'),mx=.5+.07*Math.cos(t*2*Math.PI*2),my=.55+.07*aspect*Math.sin(t*2*Math.PI*2);return h.map(p=>({x:(1-mx)+p.x*.14,y:my+p.y*.14*aspect,z:p.z*.14}));};
- const fistPoints=Array.from({length:60},(_,i)=>[circle(i/30)]);
- await page.evaluate(pts=>{clearInterval(window.testFeed);let i=0;window.testFeed=setInterval(()=>{window.__titration.hands(pts[i++%pts.length]);},33);},fistPoints);
- await page.waitForFunction(()=>window.__titration.engine.swirlLevel>.5);
- await feed([posedHand('fist').map(p=>({x:.5+p.x*.14,y:.55+p.y*.14*aspect,z:p.z*.14}))]);await page.waitForFunction(()=>window.__titration.engine.swirlLevel===0);
- await quiet();
- check('a fist going round swirls (level above 0.5), a still fist does not');
-
- // ---- Rough titration: deliberately overshoot, then record with a wrong initial reading already entered.
- await key('s');await titrate({overshoot:true});
- assert.equal(await bench(()=>window.__titration.bench.tint.name),'deep pink');
- assert.ok(await bench(()=>window.__titration.bench.excess)>.5);
- const pink=await bench(()=>window.__titration.view.liquidColour);const [rr,gg]=[1,3].map(i=>parseInt(pink.slice(i,i+2),16));assert.ok(rr>gg+60,`flask looks pink: ${pink}`);
- await shot('05-overshoot');
- await record('final');
- assert.match(await text('#titration-results'),/Rough/);assert.match(await text('#titration-results'),/not used in the mean/);
- check('overshooting the rough run turns the flask deep pink, and the rough titre is recorded but not used in the mean');
-
- // ---- Accurate titrations.
- let titres=0,water=0;
- for(let run=1;run<=4;run++){
-  if(await trueReading()>22)await key('f');
-  await newFlask();await record('initial');
-  if(run===1)water=await bench(()=>{const c=window.__titration.view.liquidColour;return parseInt(c.slice(1,3),16)-parseInt(c.slice(3,5),16);});
-  if(run===1)await shot('06-ready-accurate');
-  await titrate();
-  const name=await bench(()=>window.__titration.bench.tint.name);assert.ok(['faint pink','pink'].includes(name),`end point shows ${name}`);
-  if(run===1){
-   const col=await bench(()=>window.__titration.view.liquidColour),[r,g]=[1,3].map(i=>parseInt(col.slice(i,i+2),16));assert.ok(r-g>water+15,`faint pink in the 3D flask: ${col}`);
-   await page.waitForFunction(()=>/Burette \d+\.\d\d cm3 delivered/.test(window.__titration.live));
-   assert.match(await bench(()=>window.__titration.live),/Burette \d+\.\d\d cm3 delivered, flask [a-z ]+, pH \d+\.\d/,'live region announces delivered volume, colour and pH');
-   await shot('07-faint-pink');
-   assert.ok(await bench(()=>window.__titration.bench.excess)<.1);
-   check(`first lasting colour at the end point is ${name}, within 0.1 cm3 of equivalence; live region: ${await bench(()=>window.__titration.live)}`);
-  }
-  await record('final');titres++;
-  if(await bench(()=>window.__titration.bench.mean!==null))break;
+ return page;
+}
+const until=(page,fn,arg,opts)=>page.waitForFunction(fn,arg,{polling:'raf',timeout:90000,...opts});
+const st=page=>page.evaluate(()=>{const l=__titration.lab;return {id:l.id,phase:l.phase,step:l.step,level:l.level,quiz:!!l.quiz,fill:l.pipetteFill,drops:l.drops,finished:l.finished,line:l.line,reading:l.bench.reading,tap:l.bench.tap};});
+async function shoot(page,name){if(!shots)return;await page.waitForTimeout(900);await page.screenshot({path:`${shots}/${name}.png`});}
+const bar=page=>page.locator('#titration-gestures li').evaluateAll(l=>l.map(e=>e.textContent.replace(/^[^A-Za-z]+/,'').trim()));
+const answerQuiz=async(page,{missFirst=false}={})=>{
+ await page.waitForSelector('.ti-q');
+ const [right,count]=await page.evaluate(()=>[__titration.lab.quiz.q.answer,__titration.lab.quiz.q.options.length]);
+ if(missFirst){
+  const wrong=right===0?1:0;await page.locator(`.ti-opt[data-o="${wrong}"]`).click();
+  assert.match(await page.locator('.ti-feedback').innerText(),/Not quite/,'a wrong answer says why');
+  assert.equal(await page.locator('.ti-opt[data-state=wrong]').count(),1);
  }
- await shot('08-results');
- const con=await text('#titration-concordance');assert.match(con,/agree within 0\.10 cm3\. Mean \d+\.\d\d ± 0\.10 cm3/);
- assert.match(await text('#titration-results'),/±0\.10 cm3/);assert.match(await text('#titration-results'),/used in the mean/);
- const mean=await bench(()=>window.__titration.bench.mean);
- check(`results table: rough excluded, ${titres} accurate runs, ${con}`);
+ await page.locator(`.ti-opt[data-o="${right}"]`).click();
+ assert.equal(await page.locator('.ti-opt[data-state=right]').count(),1);
+ await page.locator('#titration-primary').click();void count;
+};
 
- // ---- Calculation, with feedback on a wrong step.
- const want=await bench(()=>window.__titration.bench.expectedCalc);
- await page.locator('#titration-calc-nBase').fill(String(want.nBase*1000));await page.locator('[data-check=nBase]').click();
- assert.match(await text('#titration-calc-nBase-fb'),/1000 times too big/);
- await page.locator('#titration-calc-nBase').fill(want.nBase.toExponential(3));await page.locator('[data-check=nBase]').click();
- await page.waitForSelector('[data-step=nBase][data-ok=true]');
- await page.locator('#titration-calc-nAcid').fill(String(want.nAcid));await page.locator('[data-check=nAcid]').click();
- await page.locator('#titration-calc-conc').fill(want.conc.toFixed(4));await page.keyboard.press('Enter');
+/** World position to page pixels, using the camera as it is now. */
+async function posOf(page,w){
+ const [s,box]=await Promise.all([page.evaluate(p=>__titration.view.screenOf({x:p.x,y:p.y,z:0}),w),page.locator('#titration-viewport').boundingBox()]);
+ return {x:box.x+s.x,y:box.y+s.y,box};
+}
+async function camSettled(page){
+ let last='';for(let i=0;i<40;i++){const p=await posOf(page,{x:0,y:0});const k=`${Math.round(p.x)},${Math.round(p.y)}`;if(k===last)return;last=k;await page.waitForTimeout(250);}
+}
+async function press(page,w){await camSettled(page);const p=await posOf(page,w);await page.mouse.move(p.x,p.y);await page.mouse.down();}
+async function dragTo(page,w,steps=14){const p=await posOf(page,w);await page.mouse.move(p.x,p.y,{steps});}
+
+// ---- Hands: landmarks placed so a chosen point lands on a world position.
+async function hand(page,pose,w,deg=0){
+ const p=await posOf(page,w),box=p.box,aspect=box.width/box.height,mx=(p.x-box.x)/box.width,my=(p.y-box.y)/box.height;
+ const a=deg*Math.PI/180,c=Math.cos(a),s=Math.sin(a),r=posedHand(pose).map(q=>({x:q.x*c-q.y*s,y:q.x*s+q.y*c,z:q.z}));
+ const ids=pose==='pinch'||pose==='open'?[4,8]:[0,5,9,13,17],ref={x:ids.reduce((t,i)=>t+r[i].x,0)/ids.length,y:ids.reduce((t,i)=>t+r[i].y,0)/ids.length};
+ return r.map(q=>({x:1-mx+(q.x-ref.x)*.14,y:my+(q.y-ref.y)*.14*aspect,z:q.z*.14}));
+}
+const feed=(page,list)=>page.evaluate(l=>{window.handList=l;if(!window.handTimer)window.handTimer=setInterval(()=>__titration.hands(window.handList),33);},list);
+const quiet=async page=>{await page.evaluate(()=>{clearInterval(window.handTimer);window.handTimer=0;});await page.waitForFunction(()=>__titration.frame.hands.length===0);};
+let cur={x:0,y:0},curDeg=0;
+/** A wrist turns over a fraction of a second, not in one frame. */
+async function pose(page,name,w,deg=0){
+ const from=curDeg,n=Math.ceil(Math.abs(deg-from)/10);
+ for(let i=1;i<n;i++){await feed(page,[await hand(page,name,w,from+(deg-from)*i/n)]);await page.waitForTimeout(40);}
+ cur=w;curDeg=deg;await feed(page,[await hand(page,name,w,deg)]);
+}
+/** A hand moves in small steps, as a real one does; a jump across the frame would be a new hand to the tracker. */
+async function carry(page,pts,name='pinch',deg=0){for(const w of pts){const from=cur;for(let i=1;i<=10;i++){await pose(page,name,{x:from.x+(w.x-from.x)*i/10,y:from.y+(w.y-from.y)*i/10},deg);await page.waitForTimeout(40);}}}
+
+let page=null;
+try{
+ // ======== Part 1: hands.
+ page=await open(1280,800);
+ assert.equal(await page.title(),'Titration bench - Spatial Studio');
+ assert.equal(await page.locator('.workspace-nav [aria-current=page]').innerText(),'Titration');
+ // At load: only the task card, guide bubble, progress strip and the corner buttons.
+ const loose=await page.evaluate(()=>[...document.querySelectorAll('button,input,select,a,summary,[tabindex]')].filter(e=>e.offsetParent!==null&&!e.closest('.mirror-corner,.mirror-gestures,.workspace-nav,.mirror-enter,.hosted-preview,#titration-viewport')&&e.id!=='titration-viewport').map(e=>e.id||e.textContent.trim()));
+ assert.ok(loose.length<=3,`few controls at load: ${loose}`);
+ assert.deepEqual(await page.locator('.ti-task, .ti-guide, .ti-dots').evaluateAll(l=>l.map(e=>e.className)).then(a=>a.length),3);
+ assert.equal(await page.locator('#titration-drawer').isHidden(),true,'the notebook is closed');
+ assert.equal(await page.locator('.mirror-actions').isHidden(),true,'the actions list is closed');
+ check(`at load only the task card, guide bubble, progress strip and corner buttons: ${loose.join(', ')} are the only other controls`);
+ assert.match(await page.locator('#titration-step').innerText(),/Step 1 of 10 · Put on your goggles/);
+ assert.deepEqual(await bar(page),['Pinch and lift','Next']);
+ await page.locator('#titration-next').click();await page.waitForTimeout(300);
+ assert.deepEqual(await bar(page),['Pinch and lift'],'the bar shows only this step\'s gesture');
+ const lit=()=>page.evaluate(()=>__titration.engine.scene.props.filter(p=>p.glow>0).map(p=>p.id));
+ assert.deepEqual(await lit(),['goggles']);
+ assert.deepEqual(await page.evaluate(()=>__titration.engine.scene.props.map(p=>p.id)),['goggles'],'only the goggles are out');
+ check('the bar shows the current step\'s gestures only, and only the goggles are lit');
+ await shoot(page,'1280-01-safety');
+
+ // Step 1: pinch the goggles and lift them.
+ await camSettled(page);await pose(page,'pinch',home('goggles'));await page.waitForFunction(()=>__titration.engine.held.length===1);
+ await carry(page,[{x:-4.1,y:-1},{x:-4.1,y:2},{x:-4.1,y:4},{x:-4.1,y:5.4}]);
+ await until(page,()=>__titration.lab.id==='rinse');
+ assert.equal(await page.evaluate(()=>__titration.bench.goggles),true);
+ check('hands: pinch the goggles and lift them to the top of the frame, step 2 begins');
+ await pose(page,'open',{x:0,y:3});await page.waitForTimeout(400);
+
+ // Step 2: pick the bottle, take it over the funnel, tilt to pour, then turn the tap to drain.
+ await shoot(page,'1280-02-rinse');
+ assert.deepEqual(await lit(),['bottle']);
+ await camSettled(page);await pose(page,'pinch',home('bottle'));await page.waitForFunction(()=>__titration.engine.held[0]?.id==='bottle');
+ await carry(page,[{x:2.5,y:0},{x:1,y:4},{x:.4,y:7.2}]);
+ await pose(page,'pinch',{x:.4,y:7.2},0);await page.waitForTimeout(300);
+ const level0=(await st(page)).level;await page.waitForTimeout(500);assert.equal((await st(page)).level,level0,'a level bottle over the funnel pours nothing');
+ await pose(page,'pinch',{x:.4,y:7.2},70);
+ await until(page,()=>__titration.lab.phase==="drain",null,{timeout:12000});
+ assert.equal(await page.evaluate(()=>__titration.engine.held.length),0,'the bottle goes back once enough has been poured');
+ check('hands: pinch the bottle, carry it over the funnel, tilt the wrist to pour; level does not pour');
+ await shoot(page,'1280-02b-drain');
+ await camSettled(page);await pose(page,'open',{x:0,y:1},0);await page.waitForTimeout(500);
+ assert.ok((await st(page)).tap<.05,'a level open hand keeps the tap shut');
+ await pose(page,'open',{x:0,y:1},70);
+ await until(page,()=>__titration.lab.id==='fill');
+ check('hands: an open hand turned 70 degrees opens the tap and drains the rinse');
+ await pose(page,'open',{x:0,y:1},0);await page.waitForTimeout(400);
+
+ // Step 3: pour to just below zero, easing the tilt back to slow down.
+ await camSettled(page);await pose(page,'pinch',home('bottle'),0);await page.waitForFunction(()=>__titration.engine.held[0]?.id==='bottle');
+ await carry(page,[{x:2.5,y:0},{x:1,y:4},{x:.4,y:7.2}]);
+ await pose(page,'pinch',{x:.4,y:7.2},70);
+ await until(page,()=>__titration.lab.level<3.5);
+ await pose(page,'pinch',{x:.4,y:7.2},28);
+ await until(page,()=>__titration.lab.level<.9||__titration.lab.level<0);
+ await pose(page,'pinch',{x:.4,y:7.2},0);await page.waitForTimeout(500);
+ await pose(page,'open',{x:.4,y:7.2},0);
+ await page.waitForFunction(()=>__titration.lab.id!=='fill'||__titration.lab.phase==='drain');
+ let s=await st(page);
+ if(s.id==='fill'){ // overfilled: the guide explains and the tap brings it back
+  assert.match(s.line,/zero mark/);
+  await pose(page,'open',{x:0,y:1},28);await until(page,()=>__titration.lab.id!=='fill');await pose(page,'open',{x:0,y:1},0);await page.waitForTimeout(300);
+ }
+ s=await st(page);assert.equal(s.id,'bubble');assert.ok(s.reading>=0&&s.reading<=1,`filled to ${s.reading}`);
+ check(`hands: tilt less to slow the pour; filled to a reading of ${s.reading.toFixed(2)}`);
+
+ // Step 4: a short burst of the tap.
+ await shoot(page,'1280-04-bubble');
+ await camSettled(page);await pose(page,'open',{x:0,y:1},70);await until(page,()=>__titration.lab.id==='pipette');
+ assert.equal(await page.evaluate(()=>__titration.bench.bubble),false);
+ await quiet(page);assert.equal((await st(page)).tap,0,'taking the hand away shuts the tap');
+ check('hands: a short open-hand turn clears the air from the tip; hand away closes the tap');
+
+ // Step 5 by key, step 6 by hands: pinch a dropper, release over the flask, once per drop.
+ await page.locator('#titration-viewport').focus();await page.keyboard.press('p');
+ await until(page,()=>__titration.lab.id==='indicator');await shoot(page,'1280-06-indicator');
+ assert.equal((await lit()).length,3,'the three droppers are lit and nothing else');
+ await camSettled(page);await pose(page,'pinch',home('dropper-phenolphthalein'));await page.waitForFunction(()=>__titration.engine.held[0]?.id==='dropper-phenolphthalein');
+ await carry(page,[{x:-3,y:-1}]);await carry(page,[{x:-1,y:1},{x:0,y:1.8}]);
+ await pose(page,'open',{x:0,y:1.8});await until(page,()=>__titration.lab.drops===1);
+ assert.equal(await page.evaluate(()=>__titration.bench.indicator),'phenolphthalein');
+ await page.waitForTimeout(500);
+ await pose(page,'pinch',{x:0,y:1.8});await page.waitForFunction(()=>__titration.engine.held.length===1);
+ await pose(page,'open',{x:0,y:1.8});await until(page,()=>!!__titration.lab.quiz);
+ check('hands: pinch a dropper, release over the flask: each release is one drop, two drops raise the question');
+ await quiet(page);
+ await shoot(page,'1280-06b-quiz');
+ await answerQuiz(page,{missFirst:true});
+ assert.equal((await st(page)).id,'initial');
+
+ // Step 7 and the rough run: tap and swirl by hand.
+ await page.waitForTimeout(600);await shoot(page,'1280-07-read');
+ await page.locator('#titration-reading').fill(String(roundTo(await page.evaluate(()=>__titration.bench.reading))));await page.locator('#titration-primary').click();
+ await until(page,()=>__titration.lab.id==='rough'&&__titration.lab.phase==='run');
+ await shoot(page,'1280-08-rough');
+ await camSettled(page);await pose(page,'open',{x:0,y:0},0);await page.waitForFunction(()=>__titration.frame.hands[0]?.pose==='open');
+ await page.waitForTimeout(700);assert.ok((await st(page)).tap<.01,'a level hand keeps the tap shut');
+ await pose(page,'open',{x:0,y:0},20);await page.waitForTimeout(700);
+ const small=(await st(page)).tap;assert.ok(small>0&&small<.2,`a small turn drips: ${small}`);
+ await pose(page,'open',{x:0,y:0},-20);await page.waitForTimeout(500);assert.ok((await st(page)).tap>0,'either direction works');
+ await pose(page,'open',{x:0,y:0},70);await page.waitForTimeout(700);
+ const big=(await st(page)).tap;assert.ok(big>.9,`a big turn runs a stream: ${big}`);
+ const r0=(await st(page)).reading;await page.waitForTimeout(600);assert.ok((await st(page)).reading>r0+.3,'the stream delivers titrant');
+ await quiet(page);assert.equal((await st(page)).tap,0,'hand away closes the tap');
+ check('hands: tap open and close: level shuts, 20 degrees drips either way, 70 degrees streams, hand away shuts');
+ // Swirl: a fist going round, in the flask.
+ const aspect=1280/(await page.locator('#titration-viewport').boundingBox()).height;void aspect;
+ const circle=await Promise.all(Array.from({length:40},async(_,i)=>[await hand(page,'fist',{x:Math.cos(i/20*Math.PI*4)*.7,y:-1.9+Math.sin(i/20*Math.PI*4)*.7+.2},0)]));
+ await page.evaluate(pts=>{clearInterval(window.handTimer);let i=0;window.handTimer=setInterval(()=>{__titration.hands(pts[i++%pts.length]);},33);},circle);
+ await page.waitForFunction(()=>__titration.engine.swirlLevel>.5);
+ await shoot(page,'1280-08b-swirl');
+ await page.evaluate(()=>{clearInterval(window.handTimer);window.handTimer=0;});await pose(page,'fist',{x:0,y:-1.9});await page.waitForFunction(()=>__titration.engine.swirlLevel===0);await quiet(page);
+ check('hands: a fist going round swirls (above 0.5), a still fist does not');
+ assert.deepEqual(errors,[]);
+ await page.context().close();
+
+ // ======== Part 2: the whole practical from the mouse and keyboard.
+ page=await open(1280,800);
+ const logStep=n=>console.log('  mouse run:',n);
+ await shoot(page,'m-01');
+ await page.locator('#titration-next').click();
+ // 1 goggles
+ await press(page,home('goggles'));await dragTo(page,{x:-4.1,y:2});await dragTo(page,{x:-4.1,y:5.5});
+ await until(page,()=>__titration.lab.id==='rinse');await page.mouse.up();logStep('goggles');
+ // 2 rinse: hold the bottle over the funnel, then drag the blue tap key.
+ await press(page,home('bottle'));await dragTo(page,{x:1,y:4});await dragTo(page,{x:.4,y:7.2});
+ await until(page,()=>__titration.lab.phase==='drain');await page.mouse.up();
+ await press(page,{x:0,y:1.2});await dragTo(page,{x:2.4,y:1.2},6);
+ await until(page,()=>__titration.lab.id==='fill');await page.mouse.up();logStep('rinse');
+ assert.equal((await st(page)).tap,0,'letting go of the tap key shuts it');
+ // 3 fill: hold until the level is near zero; an overfill is explained and drained.
+ for(let tries=0;tries<6&&(await st(page)).id==='fill';tries++){
+  if((await st(page)).phase==='pour'){
+   await press(page,home('bottle'));await dragTo(page,{x:1,y:4});await dragTo(page,{x:.4,y:7.2});
+   await until(page,()=>__titration.lab.level<.9||__titration.lab.phase!=='pour'||__titration.lab.id!=='fill');await page.mouse.up();await page.waitForTimeout(300);
+  }
+  if((await st(page)).id==='fill'&&(await st(page)).phase==='drain'){
+   assert.match((await st(page)).line,/zero mark/,'overfilling says why');
+   await press(page,{x:0,y:1.2});await dragTo(page,{x:.5,y:1.2},4);await until(page,()=>__titration.lab.id!=='fill'||__titration.lab.phase==='pour');await page.mouse.up();
+  }
+ }
+ assert.equal((await st(page)).id,'bubble');logStep('fill');
+ // 4 clear the tip
+ await press(page,{x:0,y:1.2});await dragTo(page,{x:1.4,y:1.2},4);await until(page,()=>__titration.lab.id==='pipette');await page.mouse.up();logStep('bubble');
+ // 5 pipette: lower the tip into the acid, wait, carry to the flask, let go.
+ await press(page,home('pipette'));await dragTo(page,{x:3.5,y:1});await dragTo(page,{x:2.7,y:-.7});
+ await until(page,()=>__titration.lab.pipetteFill>=1);
+ await dragTo(page,{x:1,y:2.3});await dragTo(page,{x:0,y:2.3});await page.mouse.up();
+ await until(page,()=>__titration.lab.id==='indicator');logStep('pipette');
+ // 6 indicator
+ await press(page,home('dropper-phenolphthalein'));await dragTo(page,{x:-2,y:0});await dragTo(page,{x:0,y:1.8});await page.mouse.up();
+ await until(page,()=>__titration.lab.drops===1);
+ await press(page,{x:0,y:1.8});await page.mouse.up();await until(page,()=>!!__titration.lab.quiz);logStep('indicator');
+ await answerQuiz(page,{missFirst:true});
+ // 7 read the start: a wrong reading is explained, then the right one is set with the stepper.
+ await page.waitForSelector('#titration-reading');
+ const truth=()=>page.evaluate(()=>Math.round(__titration.bench.reading*20)/20);
+ await page.locator('#titration-reading').fill(String((await truth())+.3));await page.locator('#titration-primary').click();
+ assert.match(await page.locator('#titration-line').innerText(),/high/);
+ const start=await truth(),shown=Number(await page.locator('#titration-reading').inputValue());
+ await page.locator('[data-d="1"]').click();await page.locator('[data-d="-1"]').click();await page.locator('[data-d=".05"]').click();await page.locator('[data-d="-.05"]').click();
+ assert.equal(Number(await page.locator('#titration-reading').inputValue()),shown,'the stepper steps by 1 and by 0.05');
+ await page.locator('#titration-reading').fill(start.toFixed(2));await page.locator('#titration-primary').click();
+ await until(page,()=>__titration.lab.id==='rough');logStep('read start');
+ // 8 and 9: titrations by the tap key, the flask and the keyboard.
+ const record=async()=>{await page.locator('#titration-reading').fill((await truth()).toFixed(2));await page.locator('#titration-primary').click();};
+ async function titrate(){
+  await press(page,{x:0,y:1.2});await dragTo(page,{x:2.4,y:1.2},6);
+  await until(page,()=>__titration.bench.excess>-1.2);await page.mouse.up();
+  assert.equal((await st(page)).tap,0);
+  const flask=await posOf(page,{x:0,y:-1.9});await page.mouse.move(flask.x+40,flask.y);await page.mouse.down();
+  for(let i=0;i<24;i++){const a=i/8*Math.PI*2;await page.mouse.move(flask.x+Math.cos(a)*40,flask.y+Math.sin(a)*40);await page.waitForTimeout(30);}
+  const swirled=await page.evaluate(()=>__titration.engine.swirlLevel);await page.mouse.up();
+  await page.locator('#titration-viewport').focus();
+  for(let i=0;i<80;i++){
+   if(await page.evaluate(()=>__titration.bench.tint.alpha>.12))break;
+   await page.keyboard.press('d');await page.keyboard.press('s');await page.waitForTimeout(450);
+  }
+  await page.locator('#titration-primary').click();
+  return swirled;
+ }
+ let swirlSeen=0;
+ swirlSeen=await titrate();assert.ok(swirlSeen>.3,`the mouse can swirl: ${swirlSeen}`);
+ await shoot(page,'m-08-final');
+ await page.waitForSelector('#titration-reading');await record();
+ await page.waitForSelector('.ti-q');await shoot(page,'m-quiz2');await answerQuiz(page);
+ logStep('rough');
+ for(let run=0;run<4&&(await st(page)).id==='accurate'&&!(await st(page)).quiz;run++){
+  await page.waitForSelector('#titration-reading');await record();
+  await until(page,()=>__titration.lab.phase==='run');
+  await titrate();await page.waitForSelector('#titration-reading');await record();
+  await page.waitForTimeout(300);
+ }
+ await page.waitForSelector('.ti-q');await answerQuiz(page);logStep('accurate');
+ assert.equal((await st(page)).id,'calc');
+ const mean=await page.evaluate(()=>__titration.bench.mean);assert.ok(mean!==null);
+ // 10 the sums, one at a time.
+ const want=await page.evaluate(()=>__titration.bench.expectedCalc);
+ const sum=async value=>{await page.locator('#titration-calc-input').fill(String(value));await page.locator('#titration-primary').click();await page.waitForTimeout(150);};
+ await sum(want.nBase*1000);assert.match(await page.locator('#titration-line').innerText(),/1000 times too big/);
+ await page.locator('#titration-calc-input').fill(want.nBase.toExponential(3));await page.keyboard.press('Enter');
+ await page.waitForFunction(()=>__titration.lab.phase==='nAcid');
+ await page.locator('#titration-calc-input').fill(String(want.nAcid));await page.keyboard.press('Enter');
+ await page.waitForFunction(()=>__titration.lab.phase==='conc');
+ await page.locator('#titration-calc-input').fill(want.conc.toFixed(4));await page.keyboard.press('Enter');
+ await page.waitForSelector('.ti-q');await answerQuiz(page);
  await page.waitForSelector('#titration-compare');
- const compare=await text('#titration-compare');assert.match(compare,/True value \d\.\d{4} mol\/dm3/);assert.match(compare,/Error [+-]\d+\.\d%/);
- await shot('09-calculation');
- check(`calculation: wrong step explained, three steps accepted, compared with the truth: ${compare.replace(/\n/g,' ').slice(0,120)}`);
-
- // ---- Questions: first try 10, second try 8; one hint costs 2.
- await page.locator('.ti-opt[data-q=q1][data-o="1"]').click();assert.match(await text('[data-q=q1] .ti-feedback'),/Not quite/);
- await page.locator('.ti-opt[data-q=q1][data-o="0"]').click();assert.match(await text('[data-q=q1] .ti-feedback'),/Correct.* 8 points/);
- for(const q of ['q2','q3','q4']){await page.locator(`.ti-opt[data-q=${q}][data-o="1"]`).click();assert.match(await text(`[data-q=${q}] .ti-feedback`),/Correct.* 10 points/);}
- await shot('10-questions');
- await key('h');assert.equal(await bench(()=>window.__titration.bench.hints),1);await page.locator('summary:has-text("Theory and hints")').click({trial:true}).catch(()=>{});
- check('questions score 8 after one miss and 10 first time; a hint is counted');
-
- // ---- Report: shown, downloaded, printable.
- await page.locator('#titration-report-show').click();
- const report=await bench(()=>window.__titration.bench.report());
- assert.ok(report.issues.some(i=>i.id==='overshoot'),'the overshoot is in the debrief');
- assert.ok(report.wrongReadings>=1&&/Burette readings/.test(await text('#titration-report')),'the wrong initial reading is counted');
- assert.equal(report.hints,2);assert.equal(report.quiz,Math.round((8+30)/40*20));
- await shot('11-report');
+ const compare=await page.locator('#titration-compare').innerText();
+ assert.match(compare,/True value \d\.\d{4} mol\/dm3/);assert.match(compare,/Error [+-]\d+\.\d%/);
+ await shoot(page,'m-10-report');
+ const report=await page.evaluate(()=>__titration.bench.report());
+ assert.equal(report.quiz,Math.round((8+10*3)/40*20),'a miss then a hit scores 8, the others 10 first time');
+ assert.ok(report.wrongReadings>=1,'the wrong first reading is counted');
  const [download]=await Promise.all([page.waitForEvent('download'),page.locator('#titration-download').click()]);
- assert.equal(download.suggestedFilename(),'titration-report.html');
- const html=await readFile(await download.path(),'utf8');
- assert.match(html,/Titration report/);assert.match(html,/Technique/);assert.match(html,/Checkpoint questions/);assert.doesNotMatch(html,/\u2014/);
- assert.match(html,new RegExp(`${acid.toFixed(4)}`));
- check(`report: score ${report.total}/100 shown, overshoot and a wrong reading in the debrief, HTML downloads with all sections`);
+ const html=await readFile(await download.path(),'utf8');assert.match(html,/Titration report/);assert.doesNotMatch(html,em);
+ check(`mouse and keyboard only: goggles to report, score ${report.total}/100, ${compare.replace(/\n/g,' ').slice(0,90)}`);
+ assert.equal(await page.evaluate(()=>__titration.lab.finished),true);
 
- // ---- Accessibility.
- assert.deepEqual(await contrast(),[],'text contrast at least 4.5:1');
- assert.deepEqual(await smallTargets(),[],'every target at least 24px');
- await page.locator('#titration-hint').focus();await page.keyboard.press('Tab');assert.match(await page.evaluate(()=>getComputedStyle(document.activeElement).outlineStyle),/solid|auto/);
- check('contrast at least 4.5:1 on every text element in the sheet, every target at least 24px, focus outline visible');
- await page.emulateMedia({reducedMotion:'reduce'});await page.waitForTimeout(300);await page.emulateMedia({reducedMotion:'no-preference'});
-
- // ---- Replaying the tutorial shows only what this page uses.
- await page.locator('#titration-tutorial-replay').click();await page.waitForFunction(()=>window.__titration.tutorial?.total===2);
- check('tutorial lists 2 gestures');
+ // ---- Accessibility on the finished page.
+ await page.locator('#titration-drawer-close').click();
+ assert.ok(!em.test(await page.locator('.ti-overlay').innerText()),'no em dashes in the copy');
+ const live=await page.evaluate(()=>__titration.live);assert.ok(live.length>0);
+ await page.locator('#titration-restart').evaluate(b=>b.click()).catch(()=>{});
+ await page.evaluate(()=>__titration.guide.setDrawer(false));
+ const bad=await page.evaluate(()=>{
+  const parse=c=>{const m=c.match(/[\d.]+/g).map(Number);return {r:m[0],g:m[1],b:m[2],a:m[3]??1};};
+  const lum=({r,g,b})=>{const f=v=>{v/=255;return v<=.03928?v/12.92:Math.pow((v+.055)/1.055,2.4);};return .2126*f(r)+.7152*f(g)+.0722*f(b);};
+  const over=(top,bottom)=>({r:top.r*top.a+bottom.r*(1-top.a),g:top.g*top.a+bottom.g*(1-top.a),b:top.b*top.a+bottom.b*(1-top.a),a:1});
+  const background=el=>{const layers=[];for(let e=el;e;e=e.parentElement){const c=parse(getComputedStyle(e).backgroundColor);if(c.a>0)layers.push(c);if(c.a>=1)break;}let out={r:10,g:17,b:25,a:1};for(const c of layers.reverse())out=over(c,out);return out;};
+  const out=[];
+  for(const el of document.querySelectorAll('.ti-task button:not(:disabled),.ti-task p,.ti-task b,.ti-task legend,.ti-task label,.ti-guide p,.ti-guide button,.ti-drawer p,.ti-drawer li,.ti-drawer h2,.ti-drawer h3,.ti-drawer td,.ti-drawer th,.ti-drawer button:not(:disabled)')){
+   if(el.offsetParent===null||!el.textContent.trim())continue;
+   const fg=parse(getComputedStyle(el).color),bg=background(el),f=over(fg,bg),a=lum(f),b=lum(bg),ratio=(Math.max(a,b)+.05)/(Math.min(a,b)+.05);
+   if(ratio<4.5)out.push(`${el.tagName}.${el.className} "${el.textContent.trim().slice(0,24)}" ${ratio.toFixed(2)}`);
+  }
+  return out;
+ });
+ assert.deepEqual(bad,[],'text contrast at least 4.5:1');
+ const tiny=await page.evaluate(()=>[...document.querySelectorAll('.ti-overlay button,.ti-overlay input,.mirror-corner button')].filter(e=>e.offsetParent!==null).map(e=>{const r=e.getBoundingClientRect();return {n:(e.id||e.textContent).slice(0,20),w:r.width,h:r.height};}).filter(t=>t.w<24||t.h<24));
+ assert.deepEqual(tiny,[],'every target at least 24px');
+ await page.locator('#titration-viewport').focus();await page.keyboard.press('Tab');assert.match(await page.evaluate(()=>getComputedStyle(document.activeElement).outlineStyle),/solid|auto/);
+ await page.emulateMedia({reducedMotion:'reduce'});await page.waitForTimeout(300);
+ check('contrast at least 4.5:1, targets at least 24px, focus outline visible, reduced motion accepted');
+ await page.locator('#titration-tutorial-replay').click();await page.waitForFunction(()=>__titration.tutorial?.total===4);
+ check('the tutorial lists the 4 gestures this page uses');
  assert.deepEqual(errors,[]);
+ await page.context().close();
 
- // ---- Phone width.
- const phone=await (await browser.newContext({viewport:{width:390,height:844},hasTouch:true,acceptDownloads:true})).newPage();phone.on('pageerror',e=>errors.push(e.message));phone.setDefaultTimeout(60000);
- await phone.goto(`${base}/titration?seed=21`);await phone.waitForFunction(()=>window.__titration?.ready);
- await shot('m01-start',phone);
- await phone.locator('#titration-rinse').click();await phone.locator('#titration-fill').click();await phone.locator('#titration-bubble').click();await phone.locator('#titration-pipette').click();await phone.locator('#titration-add-indicator').click();
- await phone.locator('#titration-bench').scrollIntoViewIfNeeded();await shot('m02-bench',phone);
- await phone.evaluate(()=>{const t=window.__titration;const r=Math.round(t.bench.reading*20)/20;document.querySelector('#titration-reading').value=String(r);document.querySelector('#titration-initial').click();});
- await phone.evaluate(()=>{const s=document.querySelector('#titration-tap');s.value='100';s.dispatchEvent(new Event('input',{bubbles:true}));});
- await phone.waitForFunction(()=>window.__titration.bench.excess>-4,null,{polling:'raf',timeout:90000});
- await phone.evaluate(()=>window.__titration.engine.setTap(0));await shot('m03-titrating',phone);
- assert.equal(await phone.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true,'no horizontal scroll at 390px');
- await phone.evaluate(()=>{const b=window.__titration.bench;for(let i=0;i<400&&b.tint.alpha<.15;i++){b.dropOne();for(let k=0;k<20;k++){b.setSwirl(1);b.step(.05);}}document.querySelector('#titration-reading').value=String(Math.round(b.reading*20)/20);document.querySelector('#titration-final').click();});
- await phone.locator('#titration-results').scrollIntoViewIfNeeded();await shot('m04-results',phone);
- await phone.evaluate(()=>{const b=window.__titration.bench,rec=()=>{b.pipette();b.addIndicator('phenolphthalein');b.recordInitial(Math.round(b.reading*20)/20);while(b.excess<-.9){b.setTap(1);b.setSwirl(1);b.step(.05);}b.setTap(0);for(let i=0;i<400&&b.tint.alpha<.15;i++){b.dropOne();for(let k=0;k<20;k++){b.setSwirl(1);b.step(.05);}}b.recordFinal(Math.round(b.reading*20)/20);};if(b.reading>20)b.fill();rec();if(b.reading>20)b.fill();rec();if(b.mean===null){if(b.reading>20)b.fill();rec();}const w=b.expectedCalc;for(const [s,v] of [['nBase',w.nBase],['nAcid',w.nAcid],['conc',w.conc]])b.submitCalc(s,v);b.answerQuiz('q1',true);});
- await phone.waitForSelector('#titration-compare');await phone.locator('#titration-calc').scrollIntoViewIfNeeded();await shot('m05-calculation',phone);
- await phone.locator('#titration-report-show').click();await phone.locator('#titration-report-card').scrollIntoViewIfNeeded();await shot('m06-report',phone);
+ // ======== Part 3: phone width, every step, by the Skip button.
+ const phone=await open(390,844);
+ await shoot(phone,'390-01-safety');
+ await phone.locator('#titration-next').click();
+ const names=['01-safety','02-rinse','03-fill','04-bubble','05-pipette','06-indicator','07-read','08-rough','09-accurate','10-calc'];
+ for(let i=0;i<names.length;i++){
+  if(i>0)await shoot(phone,`390-${names[i]}`);
+  assert.equal(await phone.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true,`no horizontal scroll at step ${i+1}`);
+  const rects=await phone.evaluate(()=>['#titration-task','#titration-guide'].map(s=>{const e=document.querySelector(s);if(e.hidden)return null;const r=e.getBoundingClientRect();return {l:r.left,r:r.right,t:r.top,b:r.bottom};}));
+  for(const r of rects)if(r)assert.ok(r.l>=0&&r.r<=390,'cards stay inside the width');
+  await phone.locator('#titration-skip').click();
+  if(await phone.evaluate(()=>!!__titration.lab.quiz)){await shoot(phone,`390-${names[i]}-quiz`);await phone.locator('#titration-skip').click();}
+ }
+ await phone.waitForFunction(()=>__titration.lab.finished);await shoot(phone,'390-11-done');
+ if(await phone.locator('#titration-drawer').isHidden())await phone.locator('#titration-notebook').click();await shoot(phone,'390-12-notebook');
+ assert.equal(await phone.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);
+ check('phone width 390x844: every step by Skip, no horizontal scroll, cards inside the width');
  assert.deepEqual(errors,[]);
- check('phone width 390x844: whole flow reachable, no horizontal scroll');
  console.log('Titration browser passed:',checks.length,'checks.');
 }catch(e){
- console.log('Done so far:',checks);console.log(await page.evaluate(()=>{const s=window.__titration;return s&&{bench:{reading:s.bench.reading,tap:s.bench.tap,excess:s.bench.excess,tint:s.bench.tint,runs:s.bench.runs.length,flask:s.bench.flask},live:s.live,hands:s.frame.hands.map(h=>h.pose)};}).catch(()=>null));
- await shot('failure');console.error(e);process.exitCode=1;
+ console.log('Done so far:',checks.length);console.log(await page?.evaluate(()=>{const t=__titration,l=t.lab;return JSON.stringify({id:l.id,phase:l.phase,level:l.level,held:t.engine.held,pour:t.engine.scene?.pour,hands:t.frame.hands.map(h=>h.pose),line:l.line,reading:l.bench.reading,lm:t.frame.hands[0]?.landmarks.filter((_,i)=>[0,5,9,17].includes(i)).map(q=>[q.x.toFixed(3),q.y.toFixed(3)])});}).catch(()=>null));console.error(e);process.exitCode=1;
 }finally{await browser.close();}

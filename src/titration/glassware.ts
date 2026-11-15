@@ -4,7 +4,7 @@ import * as T from 'three';
 export const BENCH_Y=-3.6,TILE_TOP=BENCH_Y+.12;
 export const BURETTE={x:0,zero:5.9,fifty:1.5,tip:.55,radius:.24,top:6.5};
 /** y of a burette reading (cm3 down from the zero mark). */
-export const buretteY=(reading:number)=>BURETTE.zero-(BURETTE.zero-BURETTE.fifty)*Math.max(0,Math.min(50,reading))/50;
+export const buretteY=(reading:number)=>BURETTE.zero-(BURETTE.zero-BURETTE.fifty)*Math.max(-3,Math.min(50,reading))/50;
 
 const V=(r:number,y:number)=>new T.Vector2(r,y);
 /** Outer profile of a 250 cm3 conical flask, base at y=0, as (radius, y) from the centre line outwards. */
@@ -86,3 +86,55 @@ export function buildStand(){
  const link=new T.Mesh(new T.CylinderGeometry(.04,.04,.6,8),metal);link.rotation.x=Math.PI/2;link.position.set(BURETTE.x,armY,-.32);
  g.add(base,rod,arm,boss,ring,link);return g;
 }
+
+/** A text label on a canvas, for bottles and sprites. */
+export function labelTexture(lines:string[],width:number,height:number,ink='#0d2238',paper='rgba(246,248,251,.94)',size=34){
+ const c=document.createElement('canvas');c.width=width;c.height=height;
+ const x=c.getContext('2d');
+ if(x){
+  x.fillStyle=paper;x.beginPath();x.roundRect(2,2,width-4,height-4,height/5);x.fill();
+  x.fillStyle=ink;x.textAlign='center';x.textBaseline='middle';
+  lines.forEach((line,i)=>{x.font=`${i?500:700} ${i?size*.8:size}px system-ui,sans-serif`;x.fillText(line,width/2,height*(i+1)/(lines.length+1));});
+ }
+ const t=new T.CanvasTexture(c);t.colorSpace=T.SRGBColorSpace;return t;
+}
+export const BEAKER={waste:{r:1.1,h:1.7},acid:{r:.95,h:1.6}};
+/** A beaker with its base at y=0, and a liquid cylinder of height 1 to scale from the base. */
+export function buildBeaker(r:number,h:number,liquid:string){
+ const g=new T.Group();
+ g.add(lathe([V(0,0),V(r,0),V(r+.02,.06),V(r+.02,h),V(r+.1,h+.05)],glassMaterial(.9),44));
+ const l=new T.Mesh(new T.CylinderGeometry(r-.05,r-.05,1,32),new T.MeshStandardMaterial({color:liquid,transparent:true,opacity:.6,roughness:.2}));
+ l.name='liquid';l.renderOrder=1;g.add(l);
+ return g;
+}
+/** The reagent bottle: 2.3 tall, base at y=0, with a label on the front. */
+export function buildBottle(){
+ const g=new T.Group();
+ g.add(lathe([V(0,0),V(.55,0),V(.6,.1),V(.6,1.5),V(.36,1.9),V(.26,1.98),V(.26,2.1)],glassMaterial(.9),36));
+ const l=new T.Mesh(new T.CylinderGeometry(.52,.52,1.3,28),new T.MeshStandardMaterial({color:'#cfe6f6',transparent:true,opacity:.55,roughness:.2}));l.position.y=.78;l.renderOrder=1;g.add(l);
+ const cap=new T.Mesh(new T.CylinderGeometry(.3,.3,.2,20),new T.MeshStandardMaterial({color:'#2d3a49',roughness:.6}));cap.position.y=2.2;g.add(cap);
+ const label=new T.Mesh(new T.PlaneGeometry(.95,.7),new T.MeshBasicMaterial({map:labelTexture(['NaOH','0.100 M'],256,192,'#0d2238','#f6f8fb',58),transparent:true}));
+ label.position.set(0,.8,.62);label.renderOrder=3;g.add(label);
+ return g;
+}
+export function buildGoggles(){
+ const g=new T.Group(),frame=new T.MeshStandardMaterial({color:'#2f8f5b',roughness:.5}),lens=new T.MeshStandardMaterial({color:'#bfe8ff',transparent:true,opacity:.55,roughness:.1});
+ for(const sx of [-.4,.4]){
+  const ring=new T.Mesh(new T.TorusGeometry(.3,.07,10,24),frame);ring.position.set(sx,.3,0);
+  const disc=new T.Mesh(new T.CircleGeometry(.3,24),lens);disc.position.set(sx,.3,0);g.add(ring,disc);
+ }
+ const bridge=new T.Mesh(new T.BoxGeometry(.2,.09,.09),frame);bridge.position.set(0,.34,0);
+ const strap=new T.Mesh(new T.BoxGeometry(1.9,.09,.05),new T.MeshStandardMaterial({color:'#24303d',roughness:.8}));strap.position.set(0,.3,-.1);
+ g.add(bridge,strap);return g;
+}
+export const DROPPER_TINT:Record<string,string>={'dropper-phenolphthalein':'#e6edf4','dropper-methyl-orange':'#f0a23c','dropper-universal':'#6fc25f'};
+/** A glass dropper with a rubber bulb: 2 tall, tip at y=0. */
+export function buildDropper(tint:string){
+ const g=new T.Group();
+ g.add(lathe([V(0,0),V(.03,.05),V(.1,.7),V(.1,1.5)],glassMaterial(.9),16));
+ const liquid=new T.Mesh(new T.CylinderGeometry(.075,.075,.9,12),new T.MeshStandardMaterial({color:tint,roughness:.3}));liquid.position.y=.55;liquid.renderOrder=1;g.add(liquid);
+ const bulb=new T.Mesh(new T.CapsuleGeometry(.17,.3,6,14),new T.MeshStandardMaterial({color:'#2d3a49',roughness:.7}));bulb.position.y=1.75;g.add(bulb);
+ return g;
+}
+/** A funnel for the top of the burette: its spout ends at y=0. */
+export function buildFunnel(){return lathe([V(.08,0),V(.1,.3),V(.78,.95),V(.84,1.02)],glassMaterial(.9),32);}

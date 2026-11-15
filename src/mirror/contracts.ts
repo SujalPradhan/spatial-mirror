@@ -149,6 +149,10 @@ export interface MirrorObject<State extends MirrorState=MirrorState,View extends
  idles?(state:State):boolean;
  /** Called when the viewer recenters, for an object with more to put back than the pose. */
  recentered?(engine:Engine):void;
+ /** The gestures the bar shows right now, most important first; the shell redraws the bar when the list changes. A label replaces the object's own wording for that gesture. */
+ bar?(engine:Engine):readonly {id:MirrorGestureId;label?:string}[];
+ /** Shared actions this object has no use for. They get no button and no key. */
+ omit?:readonly string[];
  /** What this object adds to the shared actions (rotate, zoom, reset, pause), in the order they appear. */
  actions?:readonly MirrorAction<Engine>[];
  /** One plain sentence for screen readers about the scene right now; the shell reads it at most every 1.5 seconds and only when it changed. */

@@ -35,7 +35,11 @@ const {id}=object,part=<T extends HTMLElement=HTMLElement>(name:string)=>$<T>(`#
 document.title=object.title;
 const allGestures=mirrorGestures({thumbUp:object.motion.run,thumbDown:object.motion.reverse,...object.gestures},object.use);
 mountMirrorPage($('#app'),{id,copy:object.copy,about:object.about,gestures:allGestures});
-const gestures=()=>settings.oneHanded?allGestures.filter(g=>!TWO_HAND.includes(g.id)):allGestures;
+let dynamicBar:readonly {id:MirrorGestureId;label?:string}[]|null=null;
+const gestures=()=>{
+ const list=dynamicBar?mirrorGestures({thumbUp:object.motion.run,thumbDown:object.motion.reverse,...object.gestures,...Object.fromEntries(dynamicBar.filter(g=>g.label).map(g=>[g.id,g.label]))},dynamicBar.map(g=>g.id)):allGestures;
+ return settings.oneHanded?list.filter(g=>!TWO_HAND.includes(g.id)):list;
+};
 const walk=createWalkthrough({id,part,gestures:allGestures,steps:object.walkthrough,frame:()=>frame,aspect:()=>videoAspect,cameraOn:()=>!!stream||phoneCamera,inkOn:()=>inkOn,storage:{getItem:k=>localStorage.getItem(k),setItem:(k,v)=>localStorage.setItem(k,v)},skipTwoHanded:()=>settings.oneHanded,holdMs:()=>TUTORIAL_HOLD_MS*HOLD_SCALE[settings.hold],tryAction:gesture=>{const entry=entries.find(e=>e.gesture===gesture);if(entry)runAction(entry.id);}});
 let state:MirrorState=object.state.initial(),client:ControlClient|null=null,owns=false,playing=false,context=0,ready=false,muted=false;
 let drag:{id:number;x:number;y:number;view:MirrorState['view'];pluck:boolean}|null=null,lastFine=-Infinity,lastPublish=0,lastDescriptor='',spoken='';
@@ -139,7 +143,8 @@ inkButton.onclick=()=>setInk(!inkOn);
 keepButton.onclick=()=>{const keep=!inkMode.board.keep;inkMode.setKeep(keep,performance.now());keepButton.setAttribute('aria-pressed',String(keep));};
 // Every gesture effect has a button and a key. All three reach the same engine methods, so none is a second implementation.
 const hasMotion=object.use.includes('thumbUp')||object.use.includes('thumbDown');
-const entries:Entry[]=[
+const omitted=object.omit??[];
+const entries:Entry[]=([
  ...(object.actions??[]).map((a):Entry=>({id:a.id,label:a.label,hint:a.hint,key:a.key,gesture:a.gesture,group:'object',run:()=>a.run(engine),pressed:a.pressed?()=>a.pressed!(engine):undefined})),
  {id:'turn-left',label:'Turn left',hint:'Rotate the view to the left',key:'arrowleft',group:'view',repeat:true,run:()=>turnBy(-TURN,0)},
  {id:'turn-right',label:'Turn right',hint:'Rotate the view to the right',key:'arrowright',gesture:'fist',group:'view',repeat:true,run:()=>turnBy(TURN,0)},
@@ -153,7 +158,7 @@ const entries:Entry[]=[
  {id:'pause',label:'Pause motion',hint:'Stop the object moving by itself, or let it move again',key:'p',group:'motion',frozenOk:true,run:()=>{paused=!paused;if(paused)playing=false;},pressed:()=>paused},
  {id:'freeze',label:'Freeze',hint:'Lock the view and every effect, or release it',key:'f',group:'motion',frozenOk:true,run:()=>freeze(!state.frozen),pressed:()=>state.frozen},
  {id:'undo',label:'Undo',hint:'Step back the last change to the view',key:'u',group:'motion',frozenOk:true,run:undo},
-];
+] as Entry[]).filter(e=>!omitted.includes(e.id));
 const panel=part('actions'),panelToggle=part<HTMLButtonElement>('actions-toggle'),summaryEl=part('summary'),stageEl=part('stage'),cornerEl=stageEl.querySelector<HTMLElement>('.mirror-corner')!;
 const groupNames:[Entry['group'],string][]=[['object','Gesture actions'],['view','View'],['motion','Motion']];
 panel.innerHTML=groupNames.map(([group,name])=>{
@@ -259,7 +264,7 @@ function lightGuide(){
  document.querySelectorAll<HTMLElement>('[data-gesture]').forEach(el=>{const id=el.dataset.gesture!;el.classList.toggle('is-on',id===active||poses.includes(id as never)&&two===null||id==='clap'&&performance.now()-shockAt<500);});
  part('stage').classList.toggle('has-hands',frame.hands.length>0);
 }
-let lastTick=performance.now(),stopped=false,lastReadout:number|string|null=null;
+let lastTick=performance.now(),stopped=false,lastReadout:number|string|null=null,barSignature='';
 let lastSummary=-Infinity;
 const summaryGate=textGate(1500);
 function tick(now:number){
@@ -271,7 +276,8 @@ function tick(now:number){
  if(ready){
   // Idle motion stops whenever the object says so or the viewer asked for less.
   engine.idle=!!object.idles?.(state as State)&&!reduced()&&!paused;
-  const out=engine.step(inkOn?inkSuppressed(frame):frame,dt,state.view,state.frozen);drawn=true;inkMode.update(frame,videoAspect,now);inkMode.render(now);
+  const out=engine.step(inkOn?inkSuppressed(frame):frame,dt,state.view,state.frozen);drawn=true;
+  if(object.bar){const next=object.bar(engine),signature=JSON.stringify(next);if(signature!==barSignature){barSignature=signature;dynamicBar=next;renderBar();}}inkMode.update(frame,videoAspect,now);inkMode.render(now);
   if(out.holding){if(out.view&&begin('hand'))Object.assign(state.view,out.view);}else finish('hand');
   for(const sound of out.sounds)audio.play(sound);
   if(object.readout&&object.copy.readoutUnit){const value=object.readout(out as ReturnType<Engine['step']>);if(value!==lastReadout)part('count').textContent=String(lastReadout=value);}
