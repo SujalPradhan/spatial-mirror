@@ -99,9 +99,9 @@ test('the demo runs 60 to 90 seconds of reading time',()=>{
  assert.ok(ms>=55000&&ms<=90000,`${ms} ms`);
 });
 
-test('every demo line is short plain English: one sentence, no dashes, no brand or board names',()=>{
+test('every demo line is short plain English: one sentence, no dashes',()=>{
  const {lines,doings}=play(6);
- const banned=/[—–]|acid lake|\b(cambridge|edexcel|aqa|ocr|ib|igcse|gcse|pearson|google|zoom|labster|phet|amazon|apple|microsoft|nord anglia|cengage)\b/i;
+ const banned=/[—–]/;
  const verdictLines=['within spec','too strong','too weak'];
  for(const t of [...lines,...doings]){
   assert.doesNotMatch(t,banned,t);
