@@ -113,7 +113,7 @@ export function buildBottle(){
  g.add(lathe([V(0,0),V(.55,0),V(.6,.1),V(.6,1.5),V(.36,1.9),V(.26,1.98),V(.26,2.1)],glassMaterial(.9),36));
  const l=new T.Mesh(new T.CylinderGeometry(.52,.52,1.3,28),new T.MeshStandardMaterial({color:'#cfe6f6',transparent:true,opacity:.55,roughness:.2}));l.position.y=.78;l.renderOrder=1;g.add(l);
  const cap=new T.Mesh(new T.CylinderGeometry(.3,.3,.2,20),new T.MeshStandardMaterial({color:'#2d3a49',roughness:.6}));cap.position.y=2.2;g.add(cap);
- const label=new T.Mesh(new T.PlaneGeometry(.95,.7),new T.MeshBasicMaterial({map:labelTexture(['NaOH','0.100 mol/dm3'],256,192,'#0d2238','#f6f8fb',58),transparent:true}));
+ const label=new T.Mesh(new T.PlaneGeometry(.95,.7),new T.MeshBasicMaterial({map:labelTexture(['NaOH','0.100 M'],256,192,'#0d2238','#f6f8fb',58),transparent:true}));
  label.position.set(0,.8,.62);label.renderOrder=3;g.add(label);
  return g;
 }

@@ -258,7 +258,7 @@ try{
  await page.waitForSelector('#titration-reading');await record();
  await page.waitForSelector('.ti-q');await shoot(page,'m-quiz2');await answerQuiz(page);
  logStep('rough');
- for(let run=0;run<4&&(await st(page)).id==='accurate';run++){
+ for(let run=0;run<4&&(await st(page)).id==='accurate'&&!(await st(page)).quiz;run++){
   await page.waitForSelector('#titration-reading');await record();
   await until(page,()=>__titration.lab.phase==='run');
   await titrate();await page.waitForSelector('#titration-reading');await record();
@@ -311,7 +311,7 @@ try{
  assert.deepEqual(bad,[],'text contrast at least 4.5:1');
  const tiny=await page.evaluate(()=>[...document.querySelectorAll('.ti-overlay button,.ti-overlay input,.mirror-corner button')].filter(e=>e.offsetParent!==null).map(e=>{const r=e.getBoundingClientRect();return {n:(e.id||e.textContent).slice(0,20),w:r.width,h:r.height};}).filter(t=>t.w<24||t.h<24));
  assert.deepEqual(tiny,[],'every target at least 24px');
- await page.locator('#titration-notebook').focus();assert.match(await page.evaluate(()=>getComputedStyle(document.activeElement).outlineStyle),/solid|auto/);
+ await page.locator('#titration-viewport').focus();await page.keyboard.press('Tab');assert.match(await page.evaluate(()=>getComputedStyle(document.activeElement).outlineStyle),/solid|auto/);
  await page.emulateMedia({reducedMotion:'reduce'});await page.waitForTimeout(300);
  check('contrast at least 4.5:1, targets at least 24px, focus outline visible, reduced motion accepted');
  await page.locator('#titration-tutorial-replay').click();await page.waitForFunction(()=>__titration.tutorial?.total===4);
@@ -333,7 +333,7 @@ try{
   if(await phone.evaluate(()=>!!__titration.lab.quiz)){await shoot(phone,`390-${names[i]}-quiz`);await phone.locator('#titration-skip').click();}
  }
  await phone.waitForFunction(()=>__titration.lab.finished);await shoot(phone,'390-11-done');
- await phone.locator('#titration-notebook').click();await shoot(phone,'390-12-notebook');
+ if(await phone.locator('#titration-drawer').isHidden())await phone.locator('#titration-notebook').click();await shoot(phone,'390-12-notebook');
  assert.equal(await phone.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);
  check('phone width 390x844: every step by Skip, no horizontal scroll, cards inside the width');
  assert.deepEqual(errors,[]);

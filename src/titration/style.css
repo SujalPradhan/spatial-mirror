@@ -69,6 +69,7 @@
 .ti-score{font:700 34px 'Manrope',system-ui,sans-serif!important;margin:8px 0 0!important}
 .ti-score small{font-size:14px;color:var(--ti-dim);font-weight:400}
 .titration-page .mirror-gestures{padding:4px 8px;border-radius:12px;background:rgba(8,11,18,.85)}
+@media(min-width:901px){.has-notebook .ti-task{left:calc((100% - 420px)/2);width:min(560px,calc(100% - 460px))}.has-notebook .ti-dots{left:calc((100% - 420px)/2)}}
 @media(max-width:900px){
  .ti-dots{top:calc(var(--mirror-corner-end,100px) + 6px)}
  .ti-task{top:calc(var(--mirror-corner-end,100px) + 24px);width:calc(100% - 24px);min-width:0;padding:10px 12px}

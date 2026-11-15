@@ -182,7 +182,7 @@ export class BenchView implements TitrationView {
   }
   const def=propById(id),ring=new T.Mesh(new T.RingGeometry(.96,1,48),new T.MeshBasicMaterial({color:ACCENT,transparent:true,opacity:.8,depthTest:false,side:T.DoubleSide}));
   const unit=id==='pipette'?1/.72:1;
-  ring.scale.set((def.r+.4)*unit,(def.half+.35)*unit,1);ring.position.set(0,def.half*unit,.8);ring.renderOrder=9;g.add(ring);this.rings.set(id,ring);
+  ring.scale.set((def.r+(id.startsWith('dropper')?.1:.4))*unit,(def.half+.35)*unit,1);ring.position.set(0,def.half*unit,.8);ring.renderOrder=9;g.add(ring);this.rings.set(id,ring);
   const text=id.startsWith('dropper')?propLabel(id):id==='pipette'?'25.0 cm3 pipette':id==='bottle'?'Sodium hydroxide':'Goggles';
   const sprite=new T.Sprite(new T.SpriteMaterial({map:labelTexture([text],id.startsWith('dropper')?330:300,64,'#0d2238','rgba(246,248,251,.95)',32),depthTest:false,transparent:true}));
   sprite.scale.set(2.2,.48,1);sprite.renderOrder=11;this.labels.set(id,sprite);

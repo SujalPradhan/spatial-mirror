@@ -56,7 +56,8 @@ export const titrationObject:MirrorObject<TitrationState,BenchView,TitrationEngi
  actions,
  bar:engine=>{
   const l=engine.lab;
-  if(l.quiz||l.finished)return l.more?[{id:'thumbUp',label:'Next'}]:[{id:'thumbUp',label:'Continue'}];
+  if(l.quiz)return l.quiz.right?[{id:'thumbUp',label:'Continue'}]:[];
+  if(l.finished)return [];
   const bar=[...l.task.bar];
   if(l.more&&!bar.some(g=>g.id==='thumbUp'))bar.push({id:'thumbUp',label:'Next'});
   return bar;

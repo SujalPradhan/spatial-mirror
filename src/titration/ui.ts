@@ -55,7 +55,7 @@ export function mountGuide(root:HTMLElement,engine:TitrationEngine,view:()=>Benc
 
  // ---- Drawer.
  let shownHints:{step:string;text:string}[]=[];let reportOpened=false;
- const setDrawer=(open:boolean)=>{drawer.hidden=!open;notebook.setAttribute('aria-expanded',String(open));if(open){render(true);$('drawer-close').focus();}else if(document.activeElement&&drawer.contains(document.activeElement))notebook.focus();};
+ const setDrawer=(open:boolean)=>{drawer.hidden=!open;stage.classList.toggle('has-notebook',open);notebook.setAttribute('aria-expanded',String(open));if(open){render(true);$('drawer-close').focus();}else if(document.activeElement&&drawer.contains(document.activeElement))notebook.focus();};
  notebook.onclick=()=>setDrawer(drawer.hidden);$('drawer-close').onclick=()=>setDrawer(false);
  drawer.addEventListener('keydown',e=>{if(e.key==='Escape'){e.stopPropagation();setDrawer(false);}});
  engine.ui=cmd=>{if(cmd==='notebook')setDrawer(drawer.hidden);else hint();};

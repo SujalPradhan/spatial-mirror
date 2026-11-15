@@ -88,7 +88,7 @@ export class Lab {
  private complete(skipped=false){
   this.done[this.step]=skipped?'skipped':'done';
   const id=this.id,qid=QUIZ_AFTER[id],q=questions.find(x=>x.id===qid);
-  if(q&&!this.quizResult[q.id]){this.quiz={q,wrong:[],right:false,feedback:''};this.say(q.text);return;}
+  if(q&&!this.quizResult[q.id]){this.quiz={q,wrong:[],right:false,feedback:''};this.say();return;}
   this.next();
  }
  private next(){
@@ -287,7 +287,7 @@ export class Lab {
    case 'initial':this.ensureFlask();b.recordInitial(roundReading(b.reading));break;
    case 'rough':this.ensureFlask();if(b.flask!.initial===null)b.recordInitial(roundReading(b.reading));this.autoRun();b.recordFinal(roundReading(b.reading));break;
    case 'accurate':for(let i=0;i<6&&b.concordance.mean===null;i++){if(!b.flask||b.flask.done)this.startRun();if(b.flask!.initial===null)b.recordInitial(roundReading(b.reading));this.autoRun();b.recordFinal(roundReading(b.reading));}break;
-   case 'calc':{const want=b.expectedCalc;if(want)for(const s of calcSteps)b.submitCalc(s,want[s]);break;}
+   case 'calc':{const want=b.expectedCalc;if(want)for(const s of calcSteps)b.submitCalc(s,want[s]);this.phase='done';break;}
   }
   this.complete(true);
  }
