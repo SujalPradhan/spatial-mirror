@@ -134,7 +134,7 @@ export function* plan(h:DemoHost):Generator<Beat,void,void>{
  // Wait for the report to open, then give the verdict.
  yield {line:'The report is ready.',doing:'The Notebook holds the readings and the report.',min:1200,done:()=>L().finished};
  const found=B().found??want?.conc??0,v=verdict(found);
- yield {line:v.line,doing:`Result: ${fmt(found,4)} mol/dm3 against a label of about ${LABEL} mol/dm3.`,min:0};
+ yield {line:v.line,doing:`${v.ok?'Within spec':v.kind==='strong'?'Too strong':'Too weak'}: ${fmt(found,4)} mol/dm3 against a label of about ${LABEL}.`,min:0};
 }
 
 export interface Narration {line:string;doing:string;chip:string}
@@ -147,16 +147,14 @@ export class DemoRunner {
  rev=0;
  private gen:Generator<Beat,void,void>|null=null;
  private beat:Beat|null=null;
- private elapsed=0;private since=0;private last='';private settled=false;
+ private elapsed=0;private since=0;private settled=false;private chip='';
  constructor(private readonly host:DemoHost){}
  get active(){return this.state!=='idle';}
  get paused(){return this.state==='paused';}
  get finished(){return this.state==='done';}
  get narration():Narration{
-  const b=this.beat,l=this.host.lab();
-  if(!b)return {line:'',doing:'',chip:''};
-  const mode=l.quiz?'quiz':l.phase==='nBase'||l.phase==='nAcid'||l.phase==='conc'?'typing':'task';
-  return {line:b.line,doing:b.doing,chip:b.gesture&&!l.finished?chipFor(taskFor(l.id,l.phase),mode):''};
+  const b=this.beat;
+  return b?{line:b.line,doing:b.doing,chip:this.chip}:{line:'',doing:'',chip:''};
  }
  start(){
   this.gen=plan(this.host);this.state='running';this.beat=null;this.next();
@@ -175,13 +173,19 @@ export class DemoRunner {
   if(ok&&this.elapsed>=b.min){this.next();return;}
   if(!ok&&b.act&&b.retry&&this.since>=b.retry){this.since=0;b.act();}
   if(!ok&&this.elapsed>TIMEOUT){this.host.lab().skip();this.elapsed=0;}
-  const key=this.chipKey();if(key!==this.last){this.last=key;this.rev++;}
  }
- private chipKey(){const l=this.host.lab();return `${l.id}${l.phase}${!!l.quiz}${l.finished}`;}
+
+ /** The gesture for the moment a beat starts, read before its action moves the lab on. */
+ private chipNow(b:Beat){
+  const l=this.host.lab();
+  if(!b.gesture||l.finished)return '';
+  const mode=l.quiz?'quiz':l.phase==='nBase'||l.phase==='nAcid'||l.phase==='conc'?'typing':'task';
+  return chipFor(taskFor(l.id,l.phase),mode);
+ }
  private next(){
   const r=this.gen!.next();
   if(r.done){this.state='done';this.host.speed(1);this.rev++;return;}
-  this.beat=r.value;this.elapsed=0;this.since=0;this.settled=false;this.last=this.chipKey();
+  this.beat=r.value;this.elapsed=0;this.since=0;this.settled=false;this.chip=this.chipNow(r.value);
   this.host.speed(r.value.speed??1);r.value.act?.();this.rev++;
  }
 }

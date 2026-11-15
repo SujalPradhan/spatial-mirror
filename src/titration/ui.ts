@@ -28,8 +28,7 @@ export function mountGuide(root:HTMLElement,engine:TitrationEngine,view:()=>Benc
  host.innerHTML=`
 <ol class="ti-dots" id="titration-progress" aria-label="Progress">${steps.map((s,i)=>`<li data-step="${i}"${s.checkpoint?` data-checkpoint="${s.checkpoint}"`:''}><span class="ti-sr"></span></li>`).join('')}</ol>
 <section class="ti-task" id="titration-task" aria-label="Current task">
- <div class="ti-demo" id="titration-demo" role="group" aria-label="Demo controls" hidden><span class="ti-demo-tag">Demo</span><span class="ti-demo-btns"><button type="button" id="titration-demo-pause">Pause</button><button type="button" id="titration-demo-exit">Exit demo</button></span></div>
- <div class="ti-head"><p class="ti-step" id="titration-step"></p><span class="ti-head-btns"><button type="button" class="ti-watch" id="titration-demo-start"><span aria-hidden="true">&#9654;</span> Watch the demo</button><button type="button" class="ti-skip" id="titration-skip">Skip this step</button></span></div>
+ <div class="ti-head"><p class="ti-step" id="titration-step"></p><span class="ti-head-btns"><span class="ti-demo" id="titration-demo" role="group" aria-label="Demo controls" hidden><span class="ti-demo-tag">Demo</span><button type="button" id="titration-demo-pause">Pause</button><button type="button" id="titration-demo-exit">Exit demo</button></span><button type="button" class="ti-watch" id="titration-demo-start"><span aria-hidden="true">&#9654;</span> Watch the demo</button><button type="button" class="ti-skip" id="titration-skip">Skip this step</button></span></div>
  <p class="ti-how"><i aria-hidden="true" id="titration-glyph"></i><span id="titration-how"></span></p>
  <p class="ti-alt" id="titration-alt"></p>
  <p class="ti-chip" id="titration-chip" hidden></p>
@@ -73,7 +72,7 @@ export function mountGuide(root:HTMLElement,engine:TitrationEngine,view:()=>Benc
  $('skip').onclick=()=>{lab().skip();engine.cue('step');render(true);};
  $('next').onclick=()=>{lab().advanceLine();render(true);};
  $('primary').onclick=()=>{primary();};
- const newSession=(seed?:number)=>{engine.restart(seed);shownHints=[];reportOpened=false;lastBody='';setDrawer(false);};
+ const newSession=(seed?:number)=>{engine.restart(seed);shownHints=[];reportOpened=false;lastBody='';$('report').innerHTML='';$('results').innerHTML='';delete $('results').dataset.sig;$('hints').innerHTML='';setDrawer(false);};
  $('restart').onclick=()=>{newSession();announce('New session. A new unknown acid is in the bottle.');render(true);};
 
  // ---- Demo: a script that presses the same keys and buttons a person does.
@@ -223,7 +222,7 @@ export function mountGuide(root:HTMLElement,engine:TitrationEngine,view:()=>Benc
    const key=`${l.step}${l.phase}${!!l.quiz}${l.finished}`;
    if(key!==lastKey){lastKey=key;announce(l.finished?'All steps done.':l.quiz?'Quick check. Pick the best answer.':`Step ${l.step+1} of ${steps.length}: ${l.title}.${d?'':` ${t.how}`}`);}
    renderNotebook();
-   if(l.bench.calcDone&&l.finished&&!reportOpened){reportOpened=true;setDrawer(true);}
+   if(l.bench.calcDone&&l.finished&&!reportOpened){reportOpened=true;setDrawer(true);if(demo.active){const sec=drawer.querySelector<HTMLElement>('[aria-labelledby=ti-h-report]');if(sec)drawer.scrollTop=sec.offsetTop-8;}}
   }
   void b;
  }
