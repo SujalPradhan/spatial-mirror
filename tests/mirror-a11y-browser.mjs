@@ -35,10 +35,14 @@ const snap=(page,surface)=>page.evaluate(g=>{
  const d=window[g],s=d.engine.liveScene,state=d.state;
  return {q:state.view.q,zoom:state.view.zoom,frozen:state.frozen,rate:s.rate??d.engine.speed,slice:s.slice.amount,fields:s.fields.length,skin:s.skin,explode:s.explode,shocks:s.shocks.length,glow:Math.max(0,...s.partGlow),moved:Math.max(0,...Array.from(s.partOffsets).map(Math.abs)),element:d.engine.element??0,taken:s.taken?.length??0,electrons:d.engine.electrons??0,paused:d.paused};
 },surface.global);
-const settle=(page,surface,predicate,message,timeout=4000)=>page.waitForFunction(([g,body])=>{
- const d=window[g],s=d.engine.liveScene,state=d.state,v={q:state.view.q,zoom:state.view.zoom,frozen:state.frozen,rate:s.rate??d.engine.speed,slice:s.slice.amount,fields:s.fields.length,skin:s.skin,explode:s.explode,shocks:s.shocks.length,glow:Math.max(0,...s.partGlow),moved:Math.max(0,...Array.from(s.partOffsets).map(Math.abs)),element:d.engine.element??0,taken:s.taken?.length??0,electrons:d.engine.electrons??0,paused:d.paused};
- return new Function('v',`return (${body})(v)`)(v);
-},[surface.global,predicate.toString()],{timeout}).catch(()=>{throw new Error(message);});
+// The engine and shell clamp each frame to 50 ms, so a loaded machine slows the scene down in step with its frame rate. The budget is therefore counted in simulated seconds, summed from the same clamped frame times, not in wall time.
+const settle=(page,surface,predicate,message,budget=4)=>page.evaluate(([g,body,budget])=>new Promise(resolve=>{
+ const test=new Function('v',`return (${body})(v)`);
+ const met=()=>{const d=window[g],s=d.engine.liveScene,state=d.state,v={q:state.view.q,zoom:state.view.zoom,frozen:state.frozen,rate:s.rate??d.engine.speed,slice:s.slice.amount,fields:s.fields.length,skin:s.skin,explode:s.explode,shocks:s.shocks.length,glow:Math.max(0,...s.partGlow),moved:Math.max(0,...Array.from(s.partOffsets).map(Math.abs)),element:d.engine.element??0,taken:s.taken?.length??0,electrons:d.engine.electrons??0,paused:d.paused};return test(v);};
+ let last=performance.now(),sim=0;const wall=setTimeout(()=>resolve(false),120000);
+ const tick=now=>{sim+=Math.min(.05,(now-last)/1000);last=now;if(met()){clearTimeout(wall);resolve(true);}else if(sim>=budget){clearTimeout(wall);resolve(false);}else requestAnimationFrame(tick);};
+ if(met()){clearTimeout(wall);resolve(true);}else requestAnimationFrame(tick);
+}),[surface.global,predicate.toString(),budget]).then(done=>{if(!done)throw new Error(message);});
 const focusView=(page,surface)=>page.locator(`#${surface.id}-viewport`).focus();
 const lum=([r,g,b])=>{const f=c=>{c/=255;return c<=.03928?c/12.92:((c+.055)/1.055)**2.4;};return .2126*f(r)+.7152*f(g)+.0722*f(b);};
 const contrast=(a,b)=>{const [x,y]=[lum(a),lum(b)].sort((m,n)=>n-m);return (x+.05)/(y+.05);};
