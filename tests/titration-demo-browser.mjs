@@ -37,6 +37,7 @@ async function assertNormalStepOne(page,why){
  assert.equal(await demoState(page),'idle',why);
  assert.equal(s.step,0,why);assert.equal(s.finished,false,why);assert.equal(s.runs,0,`${why}: no titrations left over`);assert.equal(s.calc,false,why);assert.equal(s.quizzes,0,`${why}: no answers left over`);assert.equal(s.hints,0,why);
  assert.equal(await visible(page,'#titration-demo'),false,`${why}: demo controls hidden`);
+ assert.equal(await page.evaluate(()=>__titration.guide.drawerOpen),false,`${why}: the Notebook panel is closed`);
  assert.equal(await visible(page,'#titration-demo-start'),true,`${why}: the Watch the demo button is back`);
  assert.equal(await visible(page,'#titration-demo-try'),false,why);
  assert.equal(await page.locator('#titration-drawer').isHidden(),true,`${why}: notebook closed`);
