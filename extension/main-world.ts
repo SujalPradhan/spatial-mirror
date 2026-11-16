@@ -6,7 +6,8 @@ import {SwipeDetector} from '../src/ink/swipe';
 import {SlideView} from '../src/ink/zoom';
 import {drawSlide} from './slides';
 import {Pill,Share} from './share';
-import {BACKGROUNDS,BACKGROUND_LABELS,COLOURS,DEFAULT_CONFIG,NS,SLIDE_COUNT,type Background,type InkConfig,type Layout,type InkStatus,type SegState,type TrackerState} from './protocol';
+import {mixer} from './mix';
+import {BACKGROUNDS,BACKGROUND_LABELS,COLOURS,DEFAULT_CONFIG,NS,PRESENTER_MS,SLIDE_COUNT,type Background,type Presenter,type InkConfig,type Layout,type InkStatus,type SegState,type TrackerState} from './protocol';
 
 const FRAME_W=320,SEND_MS=50,STALL_MS=3000;
 const testing=location.hostname==='localhost';
@@ -63,8 +64,30 @@ let prevBackground:Background='off';
 /** What is drawn: screen mode shows the previous background until a share is actually playing. */
 const effective=():Background=>config.background==='screen'&&!share.live?prevBackground:config.background;
 let aspect=4/3;
+const pres={from:1,to:1,at:0};
+const reducedMotion=()=>window.matchMedia?.('(prefers-reduced-motion: reduce)').matches===true;
+/** How far the presenter is in, 0 to 1, easing over a quarter second unless motion is reduced. */
+function presenterAmount(now:number){
+ const t=reducedMotion()?1:Math.min(1,(now-pres.at)/PRESENTER_MS),e=1-(1-t)*(1-t);
+ return pres.from+(pres.to-pres.from)*e;
+}
+function setPresenter(next:Presenter,instant=false){
+ const target=next==='in'?1:0;if(pres.to===target&&!instant)return;
+ const now=performance.now();pres.from=instant?target:presenterAmount(now);pres.to=target;pres.at=now;
+}
+function togglePresenter(){
+ const presenter:Presenter=pres.to===1?'out':'in';
+ config={...config,presenter};setPresenter(presenter);mixer.configure(config.videoVolume,config.duck,presenter==='in',config.hear);patchConfig({presenter});syncShare();
+}
+let openSince:number|null=null,openFired=false;
+function palm(frame:InkFrame,now:number){
+ if(!config.palm||config.background!=='screen'||!frame.hands.some(h=>h.pose==='open')){openSince=null;openFired=false;return;}
+ openSince??=now;
+ if(!openFired&&now-openSince>=1000){openFired=true;togglePresenter();}
+}
 function step(frame:InkFrame){
  const bg=effective(),slides=bg==='slides',zoomable=slides||bg==='screen',now=performance.now();
+ palm(frame,now);
  ctl.options.twoHand=zoomable;ctl.update(frame);view.update(frame,zoomable,ctl.options.flipX);
  const dir=slides?swipe.update(frame):null;
  if(dir){
@@ -99,7 +122,7 @@ function setMask(bytes:Uint8Array,mw:number,mh:number){
  }
  maskCanvas.getContext('2d')!.putImageData(maskImage,0,0);seg.count++;
 }
-let lastPublished='';
+let lastPublished='',configSeen=false;
 function publish(){
  const status:InkStatus={tracker:link.state,hand:ctl.cursor!==null,fps:Math.round(link.fps),ms:Math.round(link.ms),seg:seg.state,segMs:Math.round(seg.ms),share:share.live};
  const json=JSON.stringify(status);if(json===lastPublished)return;lastPublished=json;toContent({t:'status',status});
@@ -108,6 +131,8 @@ function applyConfig(next:InkConfig){
  const now=performance.now(),was=config.lightboard,slide=config.slide,merged={...DEFAULT_CONFIG,...next};remember(merged.background);config=merged;
  if(config.slide!==slide)view.reset(now);
  ctl.options.flipX=!config.lightboard;
+ setPresenter(config.presenter,!configSeen);configSeen=true;
+ mixer.configure(config.videoVolume,config.duck,config.presenter==='in',config.hear);
  if(effective()==='off')clearMask();else if(seg.state==='failed'&&config.background!=='screen'){config.background='off';patchConfig({background:'off'});}
  if(config.background!=='screen'&&share.track)share.stop(false);
  syncShare();
@@ -170,24 +195,39 @@ function screenFrame(p:Pipe,w:number,h:number){
  const {ctx}=p,v=view.current(performance.now());
  ctx.fillStyle='#0d1017';ctx.fillRect(0,0,w,h);
  ctx.save();ctx.translate(w/2+v.x*w,h/2+v.y*h);ctx.scale(v.zoom,v.zoom);ctx.translate(-w/2,-h/2);fit(ctx,share.video!,w,h);ctx.restore();
- if(maskCanvas&&!noComposite){const r=placement(config.layout,w,h);ctx.drawImage(person(p,w,h),r.x,r.y,r.w,r.h);return;}
+ const amount=presenterAmount(performance.now());
+ if(amount<.005)return;
+ const k=.85+.15*amount;
+ ctx.save();ctx.globalAlpha=amount;
+ if(maskCanvas&&!noComposite){const r=placement(config.layout,w,h),cx=r.x+r.w/2,cy=r.y+r.h;ctx.translate(cx,cy);ctx.scale(k,k);ctx.translate(-cx,-cy);ctx.drawImage(person(p,w,h),r.x,r.y,r.w,r.h);ctx.restore();return;}
  // Without a person mask the camera sits in a framed box in the corner.
- const s=.3,bw=w*s,bh=h*s,bx=w-bw-w*.025,by=h-bh-h*.04,rad=Math.min(bw,bh)*.08;
+ const s=.3,bw=w*s,bh=h*s,bx=w-bw-w*.025,by=h-bh-h*.04,rad=Math.min(bw,bh)*.08,cx=bx+bw/2,cy=by+bh;
+ ctx.translate(cx,cy);ctx.scale(k,k);ctx.translate(-cx,-cy);
  ctx.save();ctx.beginPath();ctx.roundRect(bx,by,bw,bh,rad);ctx.clip();ctx.translate(bx,by);ctx.scale(s,s);camera(ctx,p.video,w,h);ctx.restore();
  ctx.save();ctx.beginPath();ctx.roundRect(bx,by,bw,bh,rad);ctx.lineWidth=Math.max(2,w*.003);ctx.strokeStyle='rgba(255,255,255,.85)';ctx.stroke();ctx.restore();
+ ctx.restore();
 }
 /** Screen content asks the encoder to keep detail over motion; the pill shows only while a camera is in use. */
 function syncShare(){
  const sharing=share.live&&config.background==='screen';
  for(const p of pipes)try{p.out.contentHint=sharing?'detail':'';}catch{}
- pill.render({visible:config.background==='screen'&&pipes.size>0,sharing:share.live,label:share.label,layout:config.layout});
+ pill.render({visible:config.background==='screen'&&pipes.size>0,sharing:share.live,file:share.isFile,playing:share.playing,label:share.label,layout:config.layout,presenter:config.presenter});
  publish();
 }
 share.onChange=()=>{if(!share.live)view.reset(performance.now());syncShare();};
-pill.onShare=()=>{share.start().catch(()=>{});};
+pill.onShare=()=>{mixer.resume();share.start().catch(()=>{});};
+pill.onFile=file=>share.playFile(file);
+pill.onToggle=()=>share.toggle();
+pill.onSeek=s=>share.seek(s);
+pill.onPresenter=()=>togglePresenter();
 pill.onStop=()=>share.stop();
 pill.onLayout=layout=>{config={...config,layout};patchConfig({layout});syncShare();};
 pill.onClose=()=>{share.stop(false);const background=prevBackground;setBackground(background);patchConfig({background});};
+const typing=(e:KeyboardEvent)=>{const t=e.composedPath()[0];return t instanceof HTMLElement&&(t.isContentEditable||/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));};
+window.addEventListener('keydown',e=>{
+ if(e.code!=='KeyP'||!e.altKey||!e.shiftKey||e.ctrlKey||e.metaKey||e.repeat||config.background!=='screen'||!pipes.size||typing(e))return;
+ e.preventDefault();e.stopPropagation();togglePresenter();
+},true);
 let feeder:Pipe|null=null;
 function feed(p:Pipe){
  const now=performance.now();
@@ -250,11 +290,19 @@ async function build(stream:MediaStream){
  return new MediaStream([out,...stream.getAudioTracks()]);
 }
 
+/** The microphone and the background's sound as one track; disabling or stopping it silences or ends both. */
+function withMix(stream:MediaStream){
+ const mic=stream.getAudioTracks()[0];if(!mic)return stream;
+ return new MediaStream([...stream.getVideoTracks(),mixer.mix(mic)]);
+}
 const proto=MediaDevices.prototype,original=proto.getUserMedia;
 const wrapped={async getUserMedia(this:MediaDevices,constraints?:MediaStreamConstraints){
  const stream:MediaStream=await original.call(this,constraints);
- if(!constraints||!constraints.video)return stream;
- try{return await build(stream);}catch{return stream;}
+ if(!constraints)return stream;
+ let result=stream;
+ if(constraints.video)try{result=await build(stream);}catch{result=stream;}
+ if(constraints.audio)try{result=withMix(result);}catch{}
+ return result;
 }}.getUserMedia;
 Object.defineProperty(proto,'getUserMedia',{value:wrapped,writable:true,configurable:true,enumerable:true});
 setInterval(()=>{if(pipes.size)publish();},1000);
@@ -267,5 +315,5 @@ if(testing)(window as any).__smInk={
  share:(stream:MediaStream|null)=>{if(stream)share.use(stream);else share.stop();},
  pill:()=>document.querySelector('[data-sm-ink-pill]')!==null,
  live:()=>{synthetic=false;},
- state:()=>({view:{...view.current(performance.now())},strokes:board.strokes.map(s=>({n:s.points.length,first:s.points[0],last:s.points[s.points.length-1],colour:s.colour,finishedAt:s.finishedAt})),cursor:ctl.cursor,chip,seg:{...seg},hasMask:!!maskCanvas,flipped:flipped.size,share:{live:share.live,label:share.label,hint:[...pipes].map(p=>p.out.contentHint)},prevBackground,effective:effective(),tracker:link.state,readyMs:link.readyMs,fps:link.fps,ms:link.ms,config,pipes:pipes.size,sent:link.sent}),
+ state:()=>({view:{...view.current(performance.now())},strokes:board.strokes.map(s=>({n:s.points.length,first:s.points[0],last:s.points[s.points.length-1],colour:s.colour,finishedAt:s.finishedAt})),cursor:ctl.cursor,chip,seg:{...seg},hasMask:!!maskCanvas,flipped:flipped.size,share:{live:share.live,label:share.label,file:share.isFile,playing:share.playing,time:share.video?.currentTime??0,duration:share.video?.duration??0,hint:[...pipes].map(p=>p.out.contentHint)},prevBackground,effective:effective(),tracker:link.state,readyMs:link.readyMs,fps:link.fps,ms:link.ms,config,audio:mixer.state(),presenter:presenterAmount(performance.now()),pipes:pipes.size,sent:link.sent}),
 };
