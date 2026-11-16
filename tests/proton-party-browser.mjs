@@ -137,6 +137,17 @@ try{
  assert.ok(await big.evaluate(()=>window.__protonParty.game.stats.size>0));
  if(shots)await big.screenshot({path:shots+'/big-tug.png'});
 
+ // iPhone: one big Tap to play, and the motion permission and camera are both asked for inside that tap.
+ const iosCtx=await phoneBrowser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true,userAgent:'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',permissions:['camera']});
+ await iosCtx.addInitScript(()=>{window.asked=[];window.testHands=[];DeviceMotionEvent.requestPermission=()=>{window.asked.push('motion');return Promise.resolve('granted');};const gum=navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);navigator.mediaDevices.getUserMedia=c=>{window.asked.push('camera');return gum(c);};window.Worker=class{constructor(){setTimeout(()=>this.onmessage?.({data:{type:'ready',delegate:'CPU'}}),0);}postMessage(m){if(m.type==='frame')m.bitmap.close();}terminate(){}};});
+ const ios=await iosCtx.newPage();watch(ios,'ios');await ios.goto(link);
+ await ios.waitForSelector('#pj-go');assert.equal(await ios.locator('#pj-go').textContent(),'Tap to play');
+ assert.deepEqual(await ios.evaluate(()=>window.asked),[],'nothing is asked before the tap');
+ await ios.locator('#pj-go').click();
+ assert.deepEqual(await ios.evaluate(()=>window.asked),['motion','camera']);
+ await ios.waitForFunction(()=>window.__protonPhone.online&&window.__protonPhone.camera&&window.__protonPhone.gyro);
+ assert.equal(await ios.locator('#pj-start').isHidden(),true);
+ if(shots)await ios.screenshot({path:shots+'/phone-ios.png'});
  assert.deepEqual(errors,[]);
  console.log('Proton Party browser passed: QR and code, 3 phones auto-join with no name step, hand/gyro/tap input, rotor and ATP, catches counted, goal and timer finishes, play again, reconnect name, tug of war. Hand landmarks and gyro events are synthetic.');
 }finally{await bigBrowser.close();await phoneBrowser.close();}
