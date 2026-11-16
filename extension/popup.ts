@@ -8,6 +8,8 @@ function render(){
  for(const b of $('backgrounds').children)b.setAttribute('aria-checked',String((b as HTMLElement).dataset.background===config.background));
  for(const b of $('layouts').children)b.setAttribute('aria-checked',String((b as HTMLElement).dataset.layout===config.layout));
  $('layout-row').hidden=config.background!=='screen';
+ $('presenter').textContent=`You: ${config.presenter==='in'?'In':'Out'}`;$('presenter').setAttribute('aria-pressed',String(config.presenter==='in'));
+ $<HTMLInputElement>('volume').value=String(Math.round(config.videoVolume*100));$<HTMLInputElement>('duck').checked=config.duck;$<HTMLInputElement>('hear').checked=config.hear;$<HTMLInputElement>('palm').checked=config.palm;
  for(const b of $('swatches').children)b.setAttribute('aria-checked',String((b as HTMLElement).dataset.colour===config.colour));
 }
 for(const colour of COLOURS){
@@ -27,6 +29,11 @@ for(const layout of LAYOUTS){
 $<HTMLInputElement>('ink').onchange=e=>save({ink:(e.target as HTMLInputElement).checked});
 $<HTMLInputElement>('keep').onchange=e=>save({keep:(e.target as HTMLInputElement).checked});
 $<HTMLInputElement>('lightboard').onchange=e=>save({lightboard:(e.target as HTMLInputElement).checked});
+$('presenter').onclick=()=>save({presenter:config.presenter==='in'?'out':'in'});
+$<HTMLInputElement>('volume').oninput=e=>save({videoVolume:Number((e.target as HTMLInputElement).value)/100});
+$<HTMLInputElement>('duck').onchange=e=>save({duck:(e.target as HTMLInputElement).checked});
+$<HTMLInputElement>('hear').onchange=e=>save({hear:(e.target as HTMLInputElement).checked});
+$<HTMLInputElement>('palm').onchange=e=>save({palm:(e.target as HTMLInputElement).checked});
 $<HTMLInputElement>('guide').onchange=e=>save({guide:(e.target as HTMLInputElement).checked});
 const step=(d:number)=>save({slide:(config.slide+d+SLIDE_COUNT)%SLIDE_COUNT});
 $('prev').onclick=()=>step(-1);$('next').onclick=()=>step(1);

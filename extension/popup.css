@@ -18,3 +18,6 @@ label{display:flex;gap:8px;align-items:center}
 #layouts{display:flex;gap:6px}
 #layouts button{flex:1;padding:4px;border:1px solid #444;border-radius:6px;background:#23262d;color:inherit;cursor:pointer;font:11px system-ui,sans-serif}
 #layouts button[aria-checked=true]{background:#eee;color:#16181d;border-color:#eee}
+#presenter{padding:6px;border:1px solid #444;border-radius:6px;background:#23262d;color:inherit;cursor:pointer}
+#presenter[aria-pressed=true]{background:#eee;color:#16181d;border-color:#eee}
+.range{display:grid;gap:4px}

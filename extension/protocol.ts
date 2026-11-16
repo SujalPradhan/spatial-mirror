@@ -7,8 +7,11 @@ export type Layout=typeof LAYOUTS[number];
 export const LAYOUT_LABELS:Record<Layout,string>={corner:'Corner',side:'Side',full:'Full'};
 export const SLIDE_COUNT=6;
 export type SegState='idle'|'ok'|'failed';
-export interface InkConfig {ink:boolean;keep:boolean;lightboard:boolean;colour:string;background:Background;slide:number;guide:boolean;clearAt:number;layout:Layout}
-export const DEFAULT_CONFIG:InkConfig={ink:true,keep:false,lightboard:true,colour:'#ff3b30',background:'off',slide:0,guide:true,clearAt:0,layout:'corner'};
+export type Presenter='in'|'out';
+export interface InkConfig {ink:boolean;keep:boolean;lightboard:boolean;colour:string;background:Background;slide:number;guide:boolean;clearAt:number;layout:Layout;presenter:Presenter;videoVolume:number;duck:boolean;hear:boolean;palm:boolean}
+export const DUCK_LEVEL=.3;
+export const PRESENTER_MS=250;
+export const DEFAULT_CONFIG:InkConfig={ink:true,keep:false,lightboard:true,colour:'#ff3b30',background:'off',slide:0,guide:true,clearAt:0,layout:'corner',presenter:'in',videoVolume:.6,duck:true,hear:false,palm:false};
 export const COLOURS=['#ff3b30','#ffd60a','#30d158','#0a84ff'];
 export type TrackerState='idle'|'loading'|'ready'|'failed';
 export interface InkStatus {tracker:TrackerState;hand:boolean;fps:number;ms:number;seg?:SegState;segMs?:number;share?:boolean}
