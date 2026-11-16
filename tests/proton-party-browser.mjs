@@ -43,7 +43,7 @@ try{
  const roster=await big.evaluate(()=>window.__protonParty.roster);
  assert.equal(new Set(roster.map(r=>r.color)).size,3,'three colours');assert.ok(roster.every(r=>r.name.length>2),'fun names');
  assert.equal(await big.locator('#pp-dots li').count(),3);
- assert.equal(await hand1.locator('#pj-name').innerText(),roster[0].name);
+ for(const p of [hand1,gyro1,tap1])assert.ok(roster.map(r=>r.name).includes(await p.locator('#pj-name').innerText()),'each phone shows a name from the big screen roster');
 
  if(shots)await big.screenshot({path:shots+'/big-lobby.png'});
  // Each input path says what to do, then a lobby throw is practice only.
