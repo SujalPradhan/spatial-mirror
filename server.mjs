@@ -6,6 +6,7 @@ import {stat} from 'node:fs/promises';
 import {resolve,extname,sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {attachControlRelay} from './control-relay.mjs';
+import {attachPartyRelay} from './party-relay.mjs';
 
 const port = Number(process.env.PORT || 4173);
 const production = process.argv.includes('--production');
@@ -23,6 +24,7 @@ const server = http.createServer((req, res) => {
       : { started, ...coordinator.status }));
     return;
   }
+  if(party.handle(req,res)) return;
   if(vite) vite.middlewares(req,res);
   else void serveBuilt(req,res);
 });
@@ -30,7 +32,7 @@ if(!production) vite=await createServer({cacheDir:`node_modules/.vite-${port}`,s
 async function serveBuilt(req,res){
   try{
     const path=decodeURIComponent(new URL(req.url,'http://localhost').pathname);
-    const route=['/','/cone','/cylinder','/cube','/lab','/phone','/mechanism','/mechanism/phone','/mechanism/box','/mechanism/box/phone','/art','/maths','/phone/lab','/tracking','/atp','/atp/','/atom','/titration','/perfume','/machine','/organ','/drivetrain','/grasp','/follow','/pottery'].includes(path)?'index.html':path.slice(1);
+    const route=['/','/cone','/cylinder','/cube','/lab','/phone','/mechanism','/mechanism/phone','/mechanism/box','/mechanism/box/phone','/art','/maths','/phone/lab','/tracking','/atp','/atp/','/atom','/titration','/perfume','/machine','/organ','/drivetrain','/grasp','/follow','/pottery','/proton-party','/proton-party/join'].includes(path)?'index.html':path.slice(1);
     const file=resolve(dist,route);
     if(!file.startsWith(resolve(dist)+sep)||(req.method!=='GET'&&req.method!=='HEAD')){res.writeHead(404);res.end();return;}
     const info=await stat(file);if(!info.isFile())throw new Error('Not a file');
@@ -40,10 +42,11 @@ async function serveBuilt(req,res){
   }catch{res.writeHead(404);res.end('Not found. Run npm run build before npm start.');}
 }
 const coordinator=attachControlRelay(server,{token,port});
+const party=attachPartyRelay(server,{port});
 server.listen(port, '127.0.0.1', () => {
   console.log(`\nSection Studio: http://localhost:${port}\nPhone: npm run phone\nLocal-only diagnostic server.\n`);
 });
 async function shutdown() {
-  coordinator.close(); await vite?.close(); server.close(() => process.exit(0));
+  coordinator.close(); party.close(); await vite?.close(); server.close(() => process.exit(0));
 }
 process.on('SIGINT', shutdown); process.on('SIGTERM', shutdown);

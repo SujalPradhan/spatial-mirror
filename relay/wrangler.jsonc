@@ -4,7 +4,7 @@
   "account_id": "7e87100058e33fa6c8d90aa89fa05b01",
   "compatibility_date": "2026-05-22",
   "workers_dev": true,
-  "durable_objects": {"bindings": [{"name": "ROOMS", "class_name": "ControllerRoom"}]},
-  "migrations": [{"tag": "v1", "new_sqlite_classes": ["ControllerRoom"]}],
+  "durable_objects": {"bindings": [{"name": "ROOMS", "class_name": "ControllerRoom"}, {"name": "PARTIES", "class_name": "PartyRoom"}]},
+  "migrations": [{"tag": "v1", "new_sqlite_classes": ["ControllerRoom"]}, {"tag": "v2", "new_sqlite_classes": ["PartyRoom"]}],
   "vars": {"ALLOWED_ORIGINS": "https://spatial-mirror.pages.dev,https://spatial-studio-webcam.dearmacaw4.chatgpt.site,http://localhost:4174,http://localhost:4175,http://127.0.0.1:4174,http://127.0.0.1:4175"}
 }

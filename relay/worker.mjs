@@ -1,4 +1,5 @@
 import {createControlRoom} from '../control-room.mjs';
+import {createPartyRoom,normalPartyCode,validPartyCode,partyCode,partySecret} from '../party-room.mjs';
 
 const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const secret=()=>Array.from(crypto.getRandomValues(new Uint8Array(32)),n=>n.toString(16).padStart(2,'0')).join('');
@@ -17,7 +18,8 @@ export default {
   const url=new URL(request.url);
   let response;
   try{
-   if(request.method==='POST'&&(url.pathname==='/rooms'||/^\/rooms\/[^/]+\/join$/.test(url.pathname))){
+   if(url.pathname==='/parties'||url.pathname.startsWith('/parties/'))response=await partyRoute(request,env,url);
+   else if(request.method==='POST'&&(url.pathname==='/rooms'||/^\/rooms\/[^/]+\/join$/.test(url.pathname))){
     const ip=request.headers.get('CF-Connecting-IP')||'local';
     const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(ip))),n=>n.toString(16).padStart(2,'0')).join('');
     const rate=env.ROOMS.get(env.ROOMS.idFromName('rate:'+digest));
@@ -111,4 +113,76 @@ export class ControllerRoom {
  session(role){return {code:this.meta.code,token:this.meta[role==='desktop'?'host':'phone'],role,paired:this.meta.paired,joinExpiresAt:this.meta.joinExpiresAt,expiresAt:this.meta.expiresAt};}
  closedSocket(code,reason){const [client,server]=Object.values(new WebSocketPair());server.accept();server.close(code,reason);return new Response(null,{status:101,webSocket:client});}
  async alarm(){this.room.close(4001,'Connection expired');await this.state.storage.deleteAll();this.meta=null;}
+}
+
+// Party rooms are a separate namespace with their own, more generous join bucket: a class shares one IP.
+async function partyRate(env,request,kind){
+ const ip=request.headers.get('CF-Connecting-IP')||'local';
+ const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(ip))),n=>n.toString(16).padStart(2,'0')).join('');
+ const gate=await env.PARTIES.get(env.PARTIES.idFromName('rate:'+digest)).fetch('https://internal/rate',{method:'POST',body:kind});
+ return gate.ok;
+}
+async function partyRoute(request,env,url){
+ if(url.pathname==='/parties'){
+  if(request.method!=='POST')return error('Not found.',404);
+  if(!await partyRate(env,request,'create'))return error('Too many parties. Please wait a bit.',429);
+  let response;
+  for(let attempt=0;attempt<4;attempt++){
+   const name=partyCode(),stub=env.PARTIES.get(env.PARTIES.idFromName(name));
+   response=await stub.fetch('https://internal/init',{method:'POST',body:JSON.stringify({code:name,host:partySecret()})});
+   if(response.status!==409)break;
+  }
+  return response;
+ }
+ const match=url.pathname.match(/^\/parties\/([^/]+)\/(status|stream)$/);
+ const name=normalPartyCode(match?.[1]);
+ if(!match||!validPartyCode(name))return error('That party code is not valid.',404);
+ const upgrade=request.headers.get('Upgrade')==='websocket';
+ if(match[2]==='status'&&request.method!=='GET')return error('Not found.',404);
+ if(match[2]==='stream'&&!upgrade)return error('Expected a WebSocket.',426);
+ if(match[2]==='stream'&&url.searchParams.get('role')==='player'&&!await partyRate(env,request,'join'))return error('Too many people joining at once. Try again in a moment.',429);
+ const stub=env.PARTIES.get(env.PARTIES.idFromName(name));
+ return stub.fetch(new Request('https://internal/'+match[2]+url.search,request));
+}
+
+export class PartyRoom {
+ constructor(state){
+  this.state=state;this.meta=null;this.room=createPartyRoom();
+  state.blockConcurrencyWhile(async()=>{this.meta=await state.storage.get('meta')||null;});
+ }
+ async fetch(request){
+  const url=new URL(request.url);
+  if(url.pathname==='/rate'&&request.method==='POST'){
+   const kind=await request.text(),create=kind==='create',windowMs=create?3600000:60000,limit=create?60:1200;
+   const key=kind+':'+Math.floor(Date.now()/windowMs);
+   const allowed=await this.state.storage.transaction(async tx=>{const n=await tx.get(key)||0;if(n>=limit)return false;await tx.put(key,n+1);return true;});
+   await this.state.storage.setAlarm(Date.now()+3700000);
+   return json({ok:allowed},allowed?200:429);
+  }
+  if(url.pathname==='/init'&&request.method==='POST'){
+   return this.state.blockConcurrencyWhile(async()=>{
+    if(this.meta)return error('Code already allocated.',409);
+    const input=await request.json();
+    this.meta={code:input.code,host:input.host,expiresAt:Date.now()+6*3600000};
+    await this.state.storage.put('meta',this.meta);await this.state.storage.setAlarm(this.meta.expiresAt);
+    return json({code:this.meta.code,token:this.meta.host,expiresAt:this.meta.expiresAt});
+   });
+  }
+  if(!this.meta||Date.now()>=this.meta.expiresAt){
+   if(url.pathname==='/stream'&&request.headers.get('Upgrade')==='websocket')return this.closedSocket(4001,'Party ended');
+   return error('That party is not running. Check the code on the big screen.',404);
+  }
+  if(url.pathname==='/status'&&request.method==='GET')return json({...this.room.status,expiresAt:this.meta.expiresAt});
+  if(url.pathname==='/stream'&&request.headers.get('Upgrade')==='websocket'){
+   const role=url.searchParams.get('role');
+   if(role==='host'){if(url.searchParams.get('token')!==this.meta.host)return this.closedSocket(4001,'Invalid connection');}
+   else if(role!=='player')return this.closedSocket(4001,'Invalid connection');
+   const [client,server]=Object.values(new WebSocketPair());server.accept();
+   this.room.connect(server,{role,name:url.searchParams.get('name'),resume:url.searchParams.get('resume')});
+   return new Response(null,{status:101,webSocket:client});
+  }
+  return error('Not found.',404);
+ }
+ closedSocket(code,reason){const [client,server]=Object.values(new WebSocketPair());server.accept();server.close(code,reason);return new Response(null,{status:101,webSocket:client});}
+ async alarm(){this.room.close(4001,'Party ended');await this.state.storage.deleteAll();this.meta=null;}
 }
