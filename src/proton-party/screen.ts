@@ -99,7 +99,8 @@ function handle(events:GameEvent[],from?:string){
    const p=headPoint();
    if(e.delta>0){
     const color=e.to?colours.get(e.to)??'#ffd27a':'#ffd27a',who=roster.find(r=>r.id===e.to);
-    pops.push({x:p.x,y:p.y,age:0,color,ring:false,text:who?`+1 ATP · ${who.name}`:'+1 ATP',vx:(Math.random()-.5)*60,vy:-90,size:38});
+    const stacked=pops.filter(q=>q.text&&q.age<.6).length;
+    pops.push({x:p.x,y:p.y+stacked*48,age:0,color,ring:false,text:who?`+1 ATP · ${who.name}`:'+1 ATP',vx:(Math.random()-.5)*60,vy:-90,size:38});
     if(e.to){socket?.send({type:'catch',to:e.to,n:1});pulse(e.to);}
     audio.ding();flash=1;glow=Math.min(1.4,glow+.35);
    }else pops.push({x:p.x,y:p.y,age:0,color:'#ff8a3d',ring:false,text:'-1 ATP',vx:0,vy:60,size:26});
