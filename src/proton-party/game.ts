@@ -22,10 +22,10 @@ export class PartyGame {
  phase:Phase='lobby';mode:Mode;steps=0;startedAt=0;results:Results|null=null;
  readonly players=new Map<string,PartyPlayer>();readonly stats=new Map<string,Stats>();readonly teams=new Map<string,Team>();
  private now:()=>number;private rng:()=>number;
- readonly roundSeconds:number;readonly goal:number;
+ readonly roundSeconds:number;goal:number;private fixedGoal:number|undefined;
  private pushes:{at:number;team:Team}[]=[];
  constructor({now=()=>Date.now(),rng=Math.random,roundSeconds=ROUND_SECONDS,goal,mode='make'}:GameOptions={}){
-  this.now=now;this.rng=rng;this.roundSeconds=roundSeconds;this.mode=mode;this.goal=goal??(mode==='tug'?TUG_GOAL:GOAL);
+  this.now=now;this.rng=rng;this.roundSeconds=roundSeconds;this.mode=mode;this.fixedGoal=goal;this.goal=goal??(mode==='tug'?TUG_GOAL:GOAL);
  }
  get atp(){return atpFor(this.steps);}
  get degrees(){return degreesFor(this.steps);}
@@ -37,7 +37,7 @@ export class PartyGame {
  }
  private smallerTeam():Team{let make=0,burn=0;for(const t of this.teams.values())t==='make'?make++:burn++;return burn<make?'burn':'make';}
  start(mode:Mode=this.mode):void{
-  this.mode=mode;this.phase='play';this.steps=0;this.startedAt=this.now();this.results=null;this.pushes=[];this.teams.clear();
+  this.mode=mode;this.goal=this.fixedGoal??(mode==='tug'?TUG_GOAL:GOAL);this.phase='play';this.steps=0;this.startedAt=this.now();this.results=null;this.pushes=[];this.teams.clear();
   for(const s of this.stats.values())Object.assign(s,{threw:0,caught:0,burned:0,lastThrow:-Infinity});
   if(mode==='tug')for(const id of this.players.keys())this.teams.set(id,this.smallerTeam());
  }
