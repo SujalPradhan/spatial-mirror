@@ -25,7 +25,7 @@ app.innerHTML=`<main class="pj" id="pj" data-team="">
 </main>`;
 const $=<T extends HTMLElement=HTMLElement>(id:string)=>document.getElementById(id) as T;
 const main=$('pj'),proton=$<HTMLButtonElement>('pj-proton'),say=$('pj-say'),sub=$('pj-sub');
-let threw=0,caught=0,team:'make'|'burn'='make',phase:'lobby'|'play'|'results'='lobby',hostOn=false,online=false,started=false,gyroOn=false,motionSeen=false,camStart=0,lastHand=-Infinity,lastThrow=-Infinity,lastPhase='';
+let threw=0,caught=0,team:'make'|'burn'='make',phase:'lobby'|'play'|'results'='lobby',hostOn=false,online=false,started=false,gyroOn=false,motionSeen=false,camStart=0,lastHand=-Infinity,lastThrow=-Infinity,listening=false,asked=false,lastPhase='';
 const flick=new FlickDetector(),shaker=new FlickDetector(SHAKE),handThrow=new HandThrow(),video=$<HTMLVideoElement>('pj-video'),overlay=$<HTMLCanvasElement>('pj-hand');
 let camera:TrackingCamera|null=null,socket:PartySocket|null=null,wake:{release():Promise<void>}|null=null;
 
@@ -95,15 +95,22 @@ function onMotion(e:DeviceMotionEvent){
 }
 async function startMotion(permission:Promise<string>|null){
  try{if(permission&&await permission!=='granted')return;}catch{return;}
- gyroOn=true;window.addEventListener('devicemotion',onMotion);
+ gyroOn=true;if(!listening){listening=true;window.addEventListener('devicemotion',onMotion);}
  setTimeout(()=>{if(!motionSeen){gyroOn=false;instruction();}},MOTION_WAIT_MS);
 }
+// A browser that still gates motion behind a prompt gets asked from the first tap.
+function askOnTap(){
+ const Motion=(window as unknown as {DeviceMotionEvent?:Motion}).DeviceMotionEvent;
+ if(asked||motionSeen||!asksPermission||needsTap||!Motion?.requestPermission)return;
+ asked=true;void startMotion(Motion.requestPermission());
+}
+const tapMode=()=>!handRecent()&&!(gyroOn&&motionSeen);
 async function startCamera(){
  try{
   camera=new TrackingCamera(video,overlay,true,(hands,meta)=>{
    const t=meta.sourceTimeMs;
    if(hands.length)lastHand=performance.now();
-   if(handThrow.feed(hands,t))throwIt();
+   if(handThrow.feed(hands,t,meta.width/meta.height))throwIt();
   },()=>{});
   camera.interactive=true;camStart=performance.now();$('pj-cam').hidden=false;
   await camera.start();
@@ -125,8 +132,12 @@ async function begin(){
 
 if(!/^[A-HJ-NP-Z2-9]{5}$/.test(code)){
  say.textContent='Scan the QR code on the big screen.';$('pj-proton').hidden=true;$('pj-score').hidden=true;
+ main.insertAdjacentHTML('beforeend','<form class="pj-form" id="pj-form"><label for="pj-code">Or type the code from the big screen</label><input id="pj-code" maxlength="5" autocomplete="off" autocapitalize="characters" spellcheck="false"><button type="submit">Join</button></form>');
+ const form=$('pj-form');
+ form.addEventListener('submit',e=>{e.preventDefault();const value=$<HTMLInputElement>('pj-code').value.toUpperCase().replace(/[^A-Z0-9]/g,'');if(value)location.search='?code='+value;});
 }else{
- proton.addEventListener('pointerdown',e=>{e.preventDefault();throwIt();});
+ proton.addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();askOnTap();throwIt();});
+ main.addEventListener('pointerdown',e=>{if(tapMode()&&!(e.target as HTMLElement).closest('#pj-start,#pj-form')){askOnTap();throwIt();}});
  proton.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();throwIt();}});
  connect();
  if(needsTap){$('pj-start').hidden=false;$('pj-go').addEventListener('click',()=>void begin());}

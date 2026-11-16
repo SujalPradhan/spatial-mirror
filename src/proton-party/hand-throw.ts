@@ -15,7 +15,8 @@ export class HandThrow {
  constructor(options:HandThrowOptions={}){this.o={...HAND_THROW,aspect:4/3,...options};}
  /** Milliseconds timestamp of the last frame with a hand in it. */
  get seenAt(){return this.lastSeen;}
- feed(hands:readonly (readonly Landmark[])[],t:number):boolean{
+ /** aspect is the frame's width over height; a portrait front camera is below 1. */
+ feed(hands:readonly (readonly Landmark[])[],t:number,aspect=this.o.aspect):boolean{
   const hand=hands[0];
   if(!hand||hand.length!==21){
    this.pose='none';
@@ -24,7 +25,7 @@ export class HandThrow {
   }
   if(t-this.lastSeen>this.o.lostMs)this.closedAt=null;
   this.lastSeen=t;
-  const a=this.o.aspect,p=fistPose(hand.map(q=>({x:q.x*a,y:q.y,z:q.z*a})));
+  const a=aspect>0?aspect:this.o.aspect,p=fistPose(hand.map(q=>({x:q.x*a,y:q.y,z:q.z*a})));
   // Once squeezed, the fist holds until two fingers straighten, so a wobbling finger is not a release.
   const fist=p.closed||this.closedAt!==null&&p.curled>=3&&p.extended<2;
   this.pose=fist?'fist':p.open?'open':'other';

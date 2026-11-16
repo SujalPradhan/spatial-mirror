@@ -166,3 +166,12 @@ test('hand throw: one loose finger during the squeeze is not a release',()=>{
  for(const pose of ['fist','fist','fist','point','fist','open'] as PoseName[]){out.push(h.feed([handAt(pose)],t));t+=60;}
  assert.deepEqual(out,[false,false,false,false,false,true]);
 });
+test('hand throw: works on a portrait frame when given its real aspect',()=>{
+ const portrait=.75,at=(pose:PoseName)=>posedHand(pose).map(p=>({x:.5+p.x*.14/portrait,y:.6+p.y*.14,z:p.z*.14}));
+ const h=new HandThrow();let t=0;const out:boolean[]=[];
+ for(const pose of ['open','fist','fist','fist','open'] as PoseName[]){out.push(h.feed([at(pose)],t,portrait));t+=60;}
+ assert.deepEqual(out,[false,false,false,false,true]);
+ const wide=new HandThrow(),w=(pose:PoseName)=>posedHand(pose).map(p=>({x:.5+p.x*.14*.75,y:.6+p.y*.14,z:p.z*.14}));
+ const seq:boolean[]=[];t=0;for(const pose of ['fist','fist','fist','open'] as PoseName[]){seq.push(wide.feed([w(pose)],t,4/3));t+=60;}
+ assert.deepEqual(seq,[false,false,false,true]);
+});

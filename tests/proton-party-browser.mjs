@@ -48,7 +48,7 @@ try{
  if(shots)await big.screenshot({path:shots+'/big-lobby.png'});
  // Each input path says what to do, then a lobby throw is practice only.
  await hand1.waitForFunction(()=>window.__protonPhone.camera);
- await hand1.waitForFunction(()=>/Squeeze your hand/.test(window.__protonPhone.say),null,{timeout:15000}).catch(()=>{});
+ await hand1.waitForFunction(()=>/Squeeze your hand/.test(window.__protonPhone.say),null,{timeout:15000});
  await gyro1.evaluate(()=>window.dispatchEvent(new DeviceMotionEvent('devicemotion',{rotationRate:{alpha:0,beta:0,gamma:0}})));
  await gyro1.waitForFunction(()=>window.__protonPhone.gyro&&!window.__protonPhone.camera);
  await tap1.waitForFunction(()=>/Tap the proton/.test(window.__protonPhone.say),null,{timeout:8000});
@@ -69,6 +69,8 @@ try{
  // Tap: one tap, one throw; 6 more with the 140 ms guard honoured.
  for(let i=0;i<6;i++){await tap1.locator('#pj-proton').click();await sleep(180);}
  await tap1.waitForFunction(()=>window.__protonPhone.threw===6);
+ // Tap-only phones: the whole screen is the target, not just the proton.
+ await tap1.mouse.click(195,150);await tap1.waitForFunction(()=>window.__protonPhone.threw===7);
 
  // Hand: squeeze then open, a few times, driven through the real tracking loop.
  const gesture=async()=>{await hand1.evaluate(h=>{window.testHands=[h];},hand('fist'));await sleep(450);await hand1.evaluate(h=>{window.testHands=[h];},hand('open'));await sleep(550);};
@@ -89,7 +91,6 @@ try{
  const catches=async()=>(await Promise.all([hand1,gyro1,tap1].map(p=>p.evaluate(()=>window.__protonPhone.caught)))).reduce((a,b)=>a+b,0);
  await big.waitForFunction(()=>window.__protonParty.game.atp>=1);
  const atp=await big.evaluate(()=>window.__protonParty.game.atp);
- await hand1.waitForFunction(()=>true);
  for(let i=0;i<40&&await catches()<atp;i++)await sleep(100);
  assert.equal(await catches(),atp,'every ATP was caught by exactly one phone');
  assert.equal(await tap1.locator('#pj-score').innerText().then(t=>/You threw \d+, caught \d+/.test(t)),true);
@@ -136,7 +137,18 @@ try{
  await big.waitForFunction(p=>window.__protonParty.game.steps<p,peak);
  assert.ok(await big.evaluate(()=>window.__protonParty.game.stats.size>0));
  if(shots)await big.screenshot({path:shots+'/big-tug.png'});
+ // A phone that joins mid-round is told its team.
+ const late=await (await phoneContext()).newPage();watch(late,'late');await late.context().addInitScript(noCamera);await late.goto(link);
+ await late.waitForFunction(()=>window.__protonPhone?.online);
+ const lateId=await big.waitForFunction(()=>window.__protonParty.roster.length===4&&window.__protonParty.roster[3].id).then(h=>h.jsonValue());
+ const lateTeam=await big.evaluate(id=>window.__protonParty.game.teamOf(id),lateId);
+ assert.equal(lateTeam,'burn','the smaller team gets the newcomer');
+ await late.waitForFunction(()=>window.__protonPhone.team==='burn');
 
+ // A link with no code shows the code box as a fallback, and typing it joins.
+ const bare=await (await phoneContext()).newPage();watch(bare,'bare');await bare.goto(base+'/proton-party/join');
+ await bare.locator('#pj-code').fill(code.toLowerCase());await bare.locator('#pj-form button').click();
+ await bare.waitForFunction(()=>window.__protonPhone?.online);assert.equal(new URL(bare.url()).searchParams.get('code'),code);
  // iPhone: one big Tap to play, and the motion permission and camera are both asked for inside that tap.
  const iosCtx=await phoneBrowser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true,userAgent:'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',permissions:['camera']});
  await iosCtx.addInitScript(()=>{window.asked=[];window.testHands=[];DeviceMotionEvent.requestPermission=()=>{window.asked.push('motion');return Promise.resolve('granted');};const gum=navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);navigator.mediaDevices.getUserMedia=c=>{window.asked.push('camera');return gum(c);};window.Worker=class{constructor(){setTimeout(()=>this.onmessage?.({data:{type:'ready',delegate:'CPU'}}),0);}postMessage(m){if(m.type==='frame')m.bitmap.close();}terminate(){}};});

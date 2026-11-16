@@ -6,9 +6,6 @@ export async function createParty():Promise<PartyInfo>{
  const response=await fetch(origin()+'/parties',{method:'POST',signal:AbortSignal.timeout(10000)});
  const data=await response.json();if(!response.ok)throw Error(data.error||'Could not start a party. Try again.');return data;
 }
-export async function partyStatus(code:string):Promise<{players:number;online:number;host:boolean}|null>{
- try{const response=await fetch(`${origin()}/parties/${encodeURIComponent(code)}/status`,{signal:AbortSignal.timeout(8000)});return response.ok?await response.json():null;}catch{return null;}
-}
 export function streamUrl(code:string,params:Record<string,string>){
  const url=new URL(origin());url.protocol=url.protocol==='https:'?'wss:':'ws:';url.pathname=`/parties/${code}/stream`;url.search=new URLSearchParams(params).toString();return url.href;
 }

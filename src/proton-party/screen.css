@@ -1,4 +1,4 @@
-.pp-screen{--pp-display:ui-rounded,'SF Pro Rounded','Arial Rounded MT Bold','Nunito','Roboto',system-ui,sans-serif;font-synthesis:weight;--ink:#fff7e8;--dim:rgba(255,247,232,.66);--violet:#120a2e;--gold:#ffc861;position:relative;height:100svh;display:flex;flex-direction:column;overflow:hidden;background:var(--violet);color:var(--ink);font-family:'DM Sans',system-ui,sans-serif;isolation:isolate}
+.pp-screen{--pp-display:ui-rounded,system-ui,sans-serif;font-synthesis:weight;--ink:#fff7e8;--dim:rgba(255,247,232,.66);--violet:#120a2e;--gold:#ffc861;position:relative;height:100svh;display:flex;flex-direction:column;overflow:hidden;background:var(--violet);color:var(--ink);font-family:'DM Sans',system-ui,sans-serif;isolation:isolate}
 .pp-screen *{box-sizing:border-box}
 .pp-screen h1,.pp-screen h2,.pp-screen p{margin:0;letter-spacing:0;line-height:1.1}
 .pp-screen [hidden]{display:none!important}
