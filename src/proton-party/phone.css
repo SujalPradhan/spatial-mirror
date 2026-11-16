@@ -1,0 +1,32 @@
+html,body{margin:0;overscroll-behavior:none;background:#120a2e}
+.pj{--pp-display:ui-rounded,'SF Pro Rounded','Arial Rounded MT Bold','Nunito','Roboto',system-ui,sans-serif;font-synthesis:weight;--c:#ffc861;position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;gap:10px;padding:calc(env(safe-area-inset-top) + 12px) 16px calc(env(safe-area-inset-bottom) + 14px);overflow:hidden;color:#fff7e8;font-family:'DM Sans',system-ui,sans-serif;background:radial-gradient(circle at 50% 42%,color-mix(in srgb,var(--c) 38%,#120a2e) 0%,#1a0d45 55%,#0b0620 100%);user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:manipulation}
+.pj *{box-sizing:border-box}
+.pj [hidden]{display:none!important}
+.pj-top{width:100%;display:flex;justify-content:space-between;align-items:center;font:900 18px/1 var(--pp-display)}
+.pj-me{display:flex;align-items:center;gap:10px;min-width:0}
+.pj-me b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60vw}
+.pj-me i{flex:none;width:22px;height:22px;border-radius:50%;background:var(--c);box-shadow:0 0 0 3px rgba(255,255,255,.3),0 0 16px var(--c)}
+.pj-clock{font-size:26px;color:#ffc861;font-variant-numeric:tabular-nums}
+.pj-say{margin:6px 0 0;font:900 clamp(28px,8.6vw,40px)/1.05 var(--pp-display);text-align:center;letter-spacing:-.02em;text-shadow:0 3px 0 rgba(0,0,0,.35);min-height:2.2em;display:flex;align-items:center;justify-content:center}
+.pj-proton{flex:1;min-height:0;width:100%;display:grid;place-items:center;border:0;background:none;padding:0;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.pj-proton span{display:block;height:min(100%,64vw);aspect-ratio:1;max-width:100%;border-radius:50%;background:radial-gradient(circle at 36% 32%,#fff 0%,var(--c) 34%,color-mix(in srgb,var(--c) 55%,#000) 100%);box-shadow:0 0 0 6px rgba(255,255,255,.25),0 0 60px 14px var(--c),0 0 140px 40px color-mix(in srgb,var(--c) 55%,transparent);animation:pj-breathe 1.6s ease-in-out infinite alternate}
+.pj-proton.is-throw span{animation:pj-throw .42s ease-out}
+.pj.is-waiting .pj-proton span{opacity:.45;animation:none}
+@keyframes pj-breathe{to{transform:scale(1.06)}}
+@keyframes pj-throw{0%{transform:scale(1)}25%{transform:scale(.72)}55%{transform:translateY(-26vh) scale(.5);opacity:.9}100%{transform:scale(1);opacity:1}}
+.pj-sub{margin:0;min-height:1.3em;text-align:center;font:800 16px/1.25 var(--pp-display);color:rgba(255,247,232,.75)}
+.pj-cam{position:relative;width:min(58vw,240px);aspect-ratio:4/3;border-radius:22px;overflow:hidden;border:4px solid var(--c);box-shadow:0 0 28px var(--c);background:#000;flex:none}
+.pj-cam video,.pj-cam canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+.pj-score{margin:0;font:900 20px/1.1 var(--pp-display);text-align:center}
+.pj-score b{color:#ffc861;font-size:28px}
+.pj-catch{position:absolute;inset:0;display:grid;place-content:center;justify-items:center;gap:4px;background:radial-gradient(circle,rgba(255,200,97,.95) 0%,rgba(255,95,210,.55) 60%,transparent 100%);opacity:0;pointer-events:none;color:#1a0b3d;font:900 22px/1 var(--pp-display)}
+.pj-catch b{font-size:25vw;line-height:.9;text-shadow:0 0 30px #fff}
+.pj-catch span{font-size:12vw}
+.pj-catch.is-on{animation:pj-catch .9s ease-out}
+@keyframes pj-catch{0%{opacity:0;transform:scale(.5)}15%{opacity:1;transform:scale(1.1)}70%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(1.2)}}
+.pj-start{position:absolute;inset:0;z-index:5;display:grid;background:#120a2e}
+.pj-start button{border:0;margin:14px;border-radius:36px;background:linear-gradient(135deg,#ffc861,#ff5fd2);color:#1a0b3d;font:900 13vw/1 var(--pp-display);text-transform:uppercase;box-shadow:inset 0 -10px 0 rgba(0,0,0,.18),0 0 60px rgba(255,200,97,.6)}
+.pj-over{position:absolute;inset:0;z-index:6;display:grid;place-content:center;gap:12px;padding:24px;text-align:center;background:#120a2e;font:900 28px/1.15 var(--pp-display)}
+.pj-over span{font:600 17px/1.3 'DM Sans',system-ui,sans-serif;color:rgba(255,247,232,.75)}
+@media(prefers-reduced-motion:reduce){.pj-proton span,.pj-proton.is-throw span,.pj-catch.is-on{animation:none}.pj-catch.is-on{opacity:1}}
+@media(max-height:640px){.pj-cam{display:none}}
