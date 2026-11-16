@@ -161,3 +161,8 @@ test('hand throw: only fist to open works; a pinch alone and a held fist do not'
  for(let i=0;i<30;i++){out.push(h.feed([handAt('fist')],t));t+=60;}
  assert.equal(out.some(Boolean),false);
 });
+test('hand throw: one loose finger during the squeeze is not a release',()=>{
+ const h=new HandThrow();let t=0;const out:boolean[]=[];
+ for(const pose of ['fist','fist','fist','point','fist','open'] as PoseName[]){out.push(h.feed([handAt(pose)],t));t+=60;}
+ assert.deepEqual(out,[false,false,false,false,false,true]);
+});

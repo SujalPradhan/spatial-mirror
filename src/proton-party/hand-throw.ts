@@ -1,5 +1,4 @@
-import {classifyPose} from '../mirror/gestures';
-import type {Landmark} from '../fist';
+import {fistPose,type Landmark} from '../fist';
 
 export interface HandThrowOptions {holdMs?:number;refractoryMs?:number;lostMs?:number;aspect?:number}
 export const HAND_THROW={holdMs:110,refractoryMs:380,lostMs:450};
@@ -25,8 +24,11 @@ export class HandThrow {
   }
   if(t-this.lastSeen>this.o.lostMs)this.closedAt=null;
   this.lastSeen=t;
-  const a=this.o.aspect,pose=classifyPose(hand.map(p=>({x:p.x*a,y:p.y,z:p.z*a})));this.pose=pose;
-  if(pose==='fist'){if(this.closedAt===null)this.closedAt=t;return false;}
+  const a=this.o.aspect,p=fistPose(hand.map(q=>({x:q.x*a,y:q.y,z:q.z*a})));
+  // Once squeezed, the fist holds until two fingers straighten, so a wobbling finger is not a release.
+  const fist=p.closed||this.closedAt!==null&&p.curled>=3&&p.extended<2;
+  this.pose=fist?'fist':p.open?'open':'other';
+  if(fist){if(this.closedAt===null)this.closedAt=t;return false;}
   const held=this.closedAt!==null&&t-this.closedAt>=this.o.holdMs;
   this.closedAt=null;
   if(!held||t-this.lastThrow<this.o.refractoryMs)return false;
