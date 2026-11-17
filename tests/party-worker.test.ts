@@ -91,3 +91,21 @@ test('streams: the host needs its token, players need nothing, and messages flow
   const status=await (await call(env,`/parties/${party.code}/status`)).json();assert.equal(status.players,1);assert.equal(status.host,true);
  }finally{restore();}
 });
+test('hand messages reach only the host through the Worker, cleaned and throttled, with no storage writes',async()=>{
+ const {env,writes}=world();install();try{
+  const party=await (await call(env,'/parties',{method:'POST'})).json(),up={Upgrade:'websocket'};
+  await call(env,`/parties/${party.code}/stream?role=host&token=${party.token}`,{headers:up});const host=pairs.at(-1)!.server;
+  await call(env,`/parties/${party.code}/stream?role=player`,{headers:up});const a=pairs.at(-1)!.server;
+  await call(env,`/parties/${party.code}/stream?role=player`,{headers:up});const b=pairs.at(-1)!.server;
+  const before=writes.length,id=a.messages.find(m=>m.type==='welcome').id;
+  a.say({type:'hand',x:.25,y:.75,pose:'pinch',c:.9,from:'spoof',landmarks:[[0,0,0]]});
+  a.say({type:'hand',x:.3,y:.75,pose:'pinch',c:.9});
+  a.say({type:'hand',x:2,y:.75,pose:'open'});
+  b.say({type:'hand',x:.5,y:.5,pose:'fist'});
+  const hands=host.messages.filter(m=>m.type==='hand');
+  assert.deepEqual(hands.map(m=>[m.from===id,m.pose,m.x]),[[true,'pinch',.25],[false,'fist',.5]],'the second message inside 66 ms is throttled, the bad one dropped');
+  assert.ok(!('landmarks' in hands[0]));
+  assert.equal(a.messages.filter(m=>m.type==='hand').length+b.messages.filter(m=>m.type==='hand').length,0);
+  assert.equal(writes.length,before,'hand traffic never touches storage');
+ }finally{restore();}
+});

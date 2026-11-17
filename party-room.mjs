@@ -1,5 +1,6 @@
 export const MAX_PLAYERS=300,MAX_MESSAGE=1024,MAX_NAME=18;
-const ROSTER_GAP_MS=250,BUCKET_BURST=10,BUCKET_PER_SEC=12;
+const ROSTER_GAP_MS=250,BUCKET_BURST=10,BUCKET_PER_SEC=12,HAND_GAP_MS=1000/15,MAX_HAND_MESSAGE=200;
+const HAND_POSES=new Set(['open','fist','pinch','none']);
 const PALETTE=['#ff4d6d','#ffb703','#2ee6a6','#3aa8ff','#c77dff','#ff7b00','#00e5ff','#b8f400','#ff5fd2','#ffe14d','#6c8cff','#ff8fa3'];
 const ADJECTIVES=['Zippy','Fizzy','Turbo','Sunny','Bouncy','Spicy','Zappy','Mighty','Wiggly','Cosmic','Jolly','Speedy','Sparky','Funky','Giga','Peppy'];
 const ANIMALS=['Otter','Panda','Gecko','Llama','Koala','Falcon','Narwhal','Tiger','Pigeon','Yak','Newt','Moose','Fox','Wombat','Dingo','Lemur'];
@@ -21,6 +22,14 @@ export function cleanState(s){
  if(s.team!==undefined){if(!teams.has(s.team))return null;out.team=s.team;}
  if(s.make!==undefined||s.burn!==undefined){if(!int(s.make,0,100)||!int(s.burn,0,100))return null;out.make=s.make;out.burn=s.burn;}
  return out;
+}
+const unit=(n,digits)=>typeof n==='number'&&Number.isFinite(n)&&n>=0&&n<=1?Math.round(n*10**digits)/10**digits:null;
+/** A tiny hand state from a phone: palm position, one of three poses or none, and a confidence. Rebuilt from validated fields only. */
+export function cleanHand(p){
+ if(!isObject(p)||!HAND_POSES.has(p.pose))return null;
+ const x=unit(p.x,3),y=unit(p.y,3),c=p.c===undefined?1:unit(p.c,2);
+ if(x===null||y===null||c===null)return null;
+ return {pose:p.pose,x,y,c};
 }
 const randomKey=()=>Array.from(globalThis.crypto.getRandomValues(new Uint8Array(12)),n=>n.toString(16).padStart(2,'0')).join('');
 
@@ -82,7 +91,7 @@ export function createPartyRoom({maxPlayers=MAX_PLAYERS,now=()=>Date.now()}={}){
   else{
    if(players.size>=maxPlayers&&!evictOffline()){ws.close(4008,'The room is full');return false;}
    const n=counter++;
-   player={id:String(n+1),name:cleanName(name,funName(n)),color:colourFor(n),key:randomKey(),tokens:BUCKET_BURST,refill:now(),seen:now(),ws:null};
+   player={id:String(n+1),name:cleanName(name,funName(n)),color:colourFor(n),key:randomKey(),tokens:BUCKET_BURST,refill:now(),handAt:-Infinity,seen:now(),ws:null};
    players.set(player.id,player);
   }
   player.ws=ws;player.seen=now();bySocket.set(ws,player);
@@ -93,6 +102,11 @@ export function createPartyRoom({maxPlayers=MAX_PLAYERS,now=()=>Date.now()}={}){
    if(bySocket.get(ws)!==player)return;
    const t=now();player.tokens=Math.min(BUCKET_BURST,player.tokens+(t-player.refill)/1000*BUCKET_PER_SEC);player.refill=t;
    const p=parse(ws,data);if(!p)return;
+   if(p.type==='hand'){
+    if(String(data).length>MAX_HAND_MESSAGE||t-player.handAt<HAND_GAP_MS)return;
+    const hand=cleanHand(p);if(!hand)return;
+    player.handAt=t;player.seen=t;send(host,{type:'hand',from:player.id,...hand});return;
+   }
    if(p.type!=='throw'&&p.type!=='shake'&&p.type!=='ping')return;
    if(p.type==='ping'){send(ws,{type:'pong'});return;}
    if(player.tokens<1)return;player.tokens--;player.seen=t;

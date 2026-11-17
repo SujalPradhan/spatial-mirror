@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 // @ts-ignore Shared relay implementation is plain JavaScript for Node/Workers.
-import {createPartyRoom,cleanState,cleanName,MAX_PLAYERS,validPartyCode,partyCode,normalPartyCode} from '../party-room.mjs';
+import {createPartyRoom,cleanState,cleanName,cleanHand,MAX_PLAYERS,validPartyCode,partyCode,normalPartyCode} from '../party-room.mjs';
 
 class Sock {
  readyState=1;bufferedAmount=0;messages:any[]=[];closed:[number,string]|null=null;private handlers=new Map<string,Function[]>();
@@ -123,3 +123,33 @@ test('party codes: short, unambiguous and case-insensitive',()=>{
  assert.equal(normalPartyCode('ab-c 23'),'ABC23');assert.equal(validPartyCode('ABCDO'),false);assert.equal(validPartyCode('ABCD'),false);
 });
 test('ping gets a pong',()=>{const {join}=fixture(),a=join();a.say({type:'ping'});assert.equal(a.of('pong').length,1);});
+test('hand: validated, rebuilt from clean fields, tagged with the server id and sent to the host only',()=>{
+ const {host,join}=fixture(),a=join(),b=join(),id=a.of('welcome')[0].id;
+ a.say({type:'hand',x:.123456,y:.5,pose:'fist',c:.876,from:'spoof',landmarks:[1,2,3],extra:'x'});
+ assert.deepEqual(host.of('hand'),[{v:1,type:'hand',from:id,pose:'fist',x:.123,y:.5,c:.88}]);
+ assert.equal(a.of('hand').length+b.of('hand').length,0);
+ clock+=100;a.say({type:'hand',x:0,y:1,pose:'none'});assert.deepEqual(host.of('hand').at(-1),{v:1,type:'hand',from:id,pose:'none',x:0,y:1,c:1});
+});
+test('hand validation rejects bad values and never closes the socket',()=>{
+ const {host,join}=fixture(),a=join();
+ const bad:any[]=[{pose:'open',x:-.1,y:.5},{pose:'open',x:.5,y:1.01},{pose:'open',x:'.5',y:.5},{pose:'open',x:null,y:.5},{pose:'wave',x:.5,y:.5},{pose:'open',x:.5,y:.5,c:2},{pose:'open',x:.5},{pose:7,x:.5,y:.5},{pose:'open',x:[.5],y:.5},{pose:'open',x:{},y:.5}];
+ for(const h of bad){clock+=100;a.say({type:'hand',...h});}
+ clock+=100;a.raw('{"v":1,"type":"hand","pose":"open","x":1e999,"y":0.5}');
+ assert.equal(host.of('hand').length,0);assert.equal(a.closed,null);
+ assert.equal(cleanHand({pose:'open',x:.5,y:.5}).c,1);assert.equal(cleanHand(null),null);assert.equal(cleanHand([]),null);
+});
+test('hand: oversize messages are dropped without closing',()=>{
+ const {host,join}=fixture(),a=join();
+ a.say({type:'hand',x:.5,y:.5,pose:'open',pad:'x'.repeat(300)});assert.equal(host.of('hand').length,0);assert.equal(a.closed,null);
+ clock+=100;a.say({type:'hand',x:.5,y:.5,pose:'open'});assert.equal(host.of('hand').length,1);
+});
+test('hand: throttled to about 15 per second per player without touching throw tokens',()=>{
+ const {host,join}=fixture(),a=join(),b=join();
+ for(let i=0;i<200;i++){a.say({type:'hand',x:.5,y:.5,pose:'open'});clock+=5;}
+ const n=host.of('hand').length;assert.ok(n>=13&&n<=17,'sent '+n+' in 1 s');
+ b.say({type:'hand',x:.2,y:.2,pose:'open'});assert.equal(host.of('hand').filter(m=>m.from===b.of('welcome')[0].id).length,1,'another player is not throttled');
+ for(let i=0;i<10;i++)a.say({type:'throw'});assert.equal(host.of('throw').length,10,'hand traffic did not drain throws');
+});
+test('hand with no host is dropped quietly',()=>{
+ const {host,join}=fixture(),a=join();host.close();a.say({type:'hand',x:.5,y:.5,pose:'open'});assert.equal(a.closed,null);
+});
