@@ -6,6 +6,8 @@ if((webcamOnly&&location.pathname.includes('/phone'))||(hosted&&location.pathnam
 else if(['/phone','/mechanism/phone','/mechanism/box/phone'].includes(location.pathname))await import('./phone');
 else if(['/atp','/atp/'].includes(location.pathname))await import('./atp/app');
 else if(location.pathname.replace(/\/$/,'')==='/proton-party/join')await import('./proton-party/phone');
+else if(location.pathname.replace(/\/$/,'')==='/many-hands/join')await import('./many-hands/phone');
+else if(location.pathname.replace(/\/$/,'')==='/many-hands')await import('./many-hands/screen');
 else if(location.pathname.replace(/\/$/,'')==='/proton-party')await import('./proton-party/screen');
 else if(location.pathname==='/atom')await import('./atom/app');
 else if(location.pathname==='/titration')await import('./titration/app');
@@ -23,4 +25,4 @@ else if(location.pathname==='/mechanism/box')await import('./mechanism/app');
 else if(location.pathname==='/mechanism')await import('./stand/app');
 else if(location.pathname==='/phone/lab'||location.pathname.startsWith('/lab'))await import('./lab');
 else await import('./studio');
-if(hosted&&!location.pathname.includes('/phone')&&!location.pathname.startsWith('/proton-party'))await import('./hosted-preview');
+if(hosted&&!location.pathname.includes('/phone')&&!location.pathname.startsWith('/proton-party')&&!location.pathname.startsWith('/many-hands'))await import('./hosted-preview');
