@@ -35,7 +35,7 @@ $('#app').innerHTML=`<main class="mh-screen" id="mh-screen">${workspaceNav()}
 
 const stage=$('#mh-stage'),viewport=$('#mh-viewport'),fx=$<HTMLCanvasElement>('#mh-fx'),ctx=fx.getContext('2d')!;
 const view=new AtpView(viewport),engine=new AtpEngine(view),gate=new PullGate();
-const pose=homeView();pose.y=-.45;pose.zoom=1;
+const pose=homeView();pose.y=-.5;pose.zoom=1.12;
 const tracks=new Map<string,HandTrack>();
 interface Ghost {sx:number;sy:number;born:number;shown:Exclude<HandKind,'none'>;prev:Exclude<HandKind,'none'>;morphAt:number;phase:number;seen:boolean}
 const ghosts=new Map<string,Ghost>();
@@ -107,6 +107,14 @@ function glow(color:string){
  c=document.createElement('canvas');c.width=c.height=64;const g=c.getContext('2d')!,r=g.createRadialGradient(32,32,0,32,32,32);
  r.addColorStop(0,'#fff');r.addColorStop(.22,color);r.addColorStop(1,'transparent');g.fillStyle=r;g.fillRect(0,0,64,64);sprites.set(color,c);return c;
 }
+const LABEL_SCALE=2,labels=new Map<string,HTMLCanvasElement>();
+function label(text:string,color:string,fs:number){
+ const key=`${fs}|${color}|${text}`,hit=labels.get(key);if(hit)return hit;
+ const c=document.createElement('canvas'),g=c.getContext('2d')!,font=`800 ${fs*LABEL_SCALE}px ui-rounded,system-ui,sans-serif`;
+ g.font=font;const w=Math.ceil(g.measureText(text).width+16*LABEL_SCALE),h=Math.ceil(fs*LABEL_SCALE*1.5);c.width=w;c.height=h;
+ g.font=font;g.textAlign='center';g.textBaseline='middle';g.lineJoin='round';g.lineWidth=5*LABEL_SCALE;g.strokeStyle='rgba(10,5,30,.9)';g.strokeText(text,w/2,h/2);g.fillStyle=color;g.fillText(text,w/2,h/2);
+ if(labels.size>400)labels.clear();labels.set(key,c);return c;
+}
 const ease=(t:number)=>{const c=Math.max(0,Math.min(1,t));return c*c*(3-2*c);};
 
 function resize(){
@@ -131,12 +139,12 @@ function drawFx(dt:number,now:number){
   list.push({t,g,a,x:g.sx*w,y:g.sy*h});
   if(isActive(t,now)&&t.pose==='open')open.push(t);
  }
- const crowded=list.length>12,dim=Math.max(.6,1-list.length/90);
- for(const {t,g,a,x,y} of list){
+ const crowded=list.length>12,res=size*Math.min(2,window.devicePixelRatio||1)>150?256:128,dim=Math.max(.6,1-list.length/90);
+ for(const {t,a,x,y} of crowded?[]:list){
   if(!isActive(t,now))continue;
   const target=t.pose==='fist'?ring:t.pose==='pinch'?head:null;if(!target)continue;
-  ctx.globalAlpha=(crowded?.1:.2)*a;ctx.strokeStyle=t.color;ctx.lineWidth=crowded?1.5:2.5;
-  ctx.beginPath();ctx.moveTo(x,y);ctx.quadraticCurveTo((x+target.x)/2,Math.min(y,target.y)-size*.2,target.x,target.y);ctx.stroke();void g;
+  ctx.globalAlpha=.2*a;ctx.strokeStyle=t.color;ctx.lineWidth=2.5;
+  ctx.beginPath();ctx.moveTo(x,y);ctx.quadraticCurveTo((x+target.x)/2,Math.min(y,target.y)-size*.2,target.x,target.y);ctx.stroke();
  }
  rainAcc+=rainRate(crowd)*dt;
  while(rainAcc>=1){
@@ -151,7 +159,7 @@ function drawFx(dt:number,now:number){
   let x:number,y:number,alpha=1;
   if(d.age<A){const e=ease(d.age/A);x=d.x0+(top.x-d.x0)*e;y=d.y0+(top.y-d.y0)*e-Math.sin(e*Math.PI)*size*.25;}
   else{const e=(d.age-A)/B;x=top.x+Math.sin(e*12+d.wob)*orbit*.9;y=top.y+span*e;alpha=1-Math.max(0,(e-.7)/.3);}
-  const r=orbit*.55,s=glow(d.color);
+  const r=orbit*.7,s=glow(d.color);
   ctx.globalAlpha=.35*alpha;ctx.drawImage(s,d.px-r*.5,d.py-r*.5,r,r);
   ctx.globalAlpha=alpha;ctx.drawImage(s,x-r,y-r,r*2,r*2);d.px=x;d.py=y;
  }
@@ -159,17 +167,16 @@ function drawFx(dt:number,now:number){
   const bob=Math.sin(now/650+g.phase)*size*.025,grow=ease((now-g.born)/350),morph=ease((now-g.morphAt)/260),live=isActive(t,now);
   const s=size*(.6+.4*grow)*(t.pose==='fist'&&live?.94:1),px=x-s/2,py=y-s*.55+bob;
   ctx.globalAlpha=a*dim*grow*(live?1:.7);
-  if(morph<1){ctx.globalAlpha=a*dim*(1-morph)*.9;ctx.drawImage(handSprite(t.color,g.prev),px,py,s,s);ctx.globalAlpha=a*dim*morph;}
-  ctx.drawImage(handSprite(t.color,g.shown),px,py,s,s);
+  if(morph<1&&!crowded){ctx.globalAlpha=a*dim*(1-morph)*.9;ctx.drawImage(handSprite(t.color,g.prev,res),px,py,s,s);ctx.globalAlpha=a*dim*morph;}
+  ctx.drawImage(handSprite(t.color,g.shown,res),px,py,s,s);
  }
  ctx.globalCompositeOperation='source-over';
  const placed:{x:number;y:number;w:number;h:number}[]=[],fs=Math.round(Math.max(12,Math.min(22,size*.13)));
- ctx.font=`800 ${fs}px ui-rounded,system-ui,sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';
  const order=list.filter(l=>l.t.name).sort((p,q)=>q.g.born-p.g.born);let hidden=0;
  for(const {t,a,x,y} of order){
-  const text=t.name,tw=ctx.measureText(text).width+10,ly=y+size*.52,box={x:x-tw/2,y:ly-fs*.65,w:tw,h:fs*1.3};
+  const tag=label(t.name,t.color,fs),ly=y+size*.52,tw=tag.width/LABEL_SCALE,th=tag.height/LABEL_SCALE,box={x:x-tw/2,y:ly-th/2,w:tw,h:th};
   if(placed.some(p=>box.x<p.x+p.w&&box.x+box.w>p.x&&box.y<p.y+p.h&&box.y+box.h>p.y)){hidden++;continue;}
-  placed.push(box);ctx.globalAlpha=Math.min(1,a*1.2);ctx.lineWidth=5;ctx.strokeStyle='rgba(10,5,30,.9)';ctx.strokeText(text,x,ly);ctx.fillStyle=t.color;ctx.fillText(text,x,ly);
+  placed.push(box);ctx.globalAlpha=Math.min(1,a*1.2);ctx.drawImage(tag,box.x,box.y,tw,th);
  }
  lastLabels=hidden?`+${hidden}`:'';
  ctx.globalCompositeOperation='lighter';

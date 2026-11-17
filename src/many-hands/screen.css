@@ -37,9 +37,9 @@
 .mh-state.is-torn{background:#ff5fd2;color:#1a0b3d}
 .mh-join{position:absolute;z-index:5;left:24px;bottom:24px;display:flex;align-items:center;gap:18px;padding:14px 22px 14px 14px;border-radius:28px;background:rgba(15,9,41,.78);border:2px solid rgba(255,255,255,.22);backdrop-filter:blur(12px);transition:opacity .3s}
 .mh-join canvas{width:clamp(130px,15vw,220px)!important;height:auto!important;aspect-ratio:1;border-radius:18px;background:#fff;display:block}
-.mh-join-text{display:flex;flex-direction:column;align-items:flex-start;gap:10px;max-width:clamp(160px,16vw,250px)}
-.mh-join-text span{font:900 clamp(17px,1.7vw,26px)/1.1 var(--display);color:var(--gold)}
-.mh-join-text strong{font:900 clamp(36px,4.6vw,70px)/1 var(--display);letter-spacing:.08em;text-shadow:0 3px 0 rgba(0,0,0,.35)}
+.mh-join-text{display:flex;flex-direction:column;align-items:flex-start;gap:10px}
+.mh-join-text span{font:900 clamp(17px,1.7vw,26px)/1.1 var(--display);color:var(--gold);max-width:9em}
+.mh-join-text strong{font:900 clamp(34px,4vw,62px)/1 var(--display);letter-spacing:.06em;text-shadow:0 3px 0 rgba(0,0,0,.35)}
 .mh-join-text button{padding:8px 16px;border-radius:99px;border:2px solid rgba(255,255,255,.3);background:rgba(255,255,255,.08);font-weight:800;font-size:clamp(13px,1.2vw,17px);pointer-events:auto}
 .mh-join.is-hidden{padding:10px 14px}
 .mh-join.is-hidden canvas,.mh-join.is-hidden .mh-join-text span{display:none}

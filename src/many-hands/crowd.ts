@@ -32,7 +32,7 @@ export function summarize(tracks:Iterable<HandTrack>,now:number):Crowd{
  return {n,open,fist,pinch,openShare:share(open),gripShare:share(fist),pullShare:share(pinch)};
 }
 /** Protons per second falling from all open hands together; it rises with every hand and never quite tops out. */
-export const rainRate=(c:Crowd)=>100*(1-Math.exp(-c.open*.03));
+export const rainRate=(c:Crowd)=>100*(1-Math.exp(-c.open*.05));
 /** Rotor degrees per second: a slow idle, a push from open hands, and a bigger one from the share of fists. */
 export function rotorSpeed(c:Crowd){
  return Math.min(MAX_SPEED,IDLE_SPEED+300*(1-Math.exp(-c.open/4))+480*c.gripShare*(1-Math.exp(-c.fist/2)));
